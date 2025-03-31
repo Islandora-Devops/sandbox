@@ -1,5 +1,4 @@
 ---
-version: "3.8"
 
 # Common to all services
 x-common: &common
@@ -159,27 +158,6 @@ services:
             traefik.http.services.fcrepo.loadbalancer.server.port: 8080
         volumes:
             - fcrepo-data:/data:rw
-    matomo:
-        <<: *common
-        image: ${ISLANDORA_REPOSITORY}/matomo:${ISLANDORA_TAG}
-        labels:
-            traefik.enable: true
-            traefik.http.middlewares.matomo-custom-request-headers.headers.customrequestheaders.X-Forwarded-Uri: /matomo
-            traefik.http.middlewares.matomo-append-slash.redirectregex.regex: ^(https?://[^/]+/matomo)$$
-            traefik.http.middlewares.matomo-append-slash.redirectregex.replacement: $${1}/
-            traefik.http.middlewares.matomo-strip-prefix.stripprefix.prefixes: /matomo
-            traefik.http.middlewares.matomo.chain.middlewares: matomo-append-slash,matomo-strip-prefix,matomo-custom-request-headers
-            traefik.http.routers.matomo_http.entrypoints: http
-            traefik.http.routers.matomo_http.middlewares: matomo
-            traefik.http.routers.matomo_http.rule: Host(`islandora.io`) && PathPrefix(`/matomo`)
-            traefik.http.routers.matomo_http.service: matomo
-            traefik.http.services.matomo.loadbalancer.server.port: 80
-        environment:
-            MATOMO_ASSUME_SECURE_PROTOCOL: 0
-            MATOMO_DEFAULT_HOST: "http://islandora.io"
-            MATOMO_FORCE_SSL: 0
-        volumes:
-            - matomo-data:/var/www/matomo:rw
     solr:
         <<: *common
         image: ${ISLANDORA_REPOSITORY}/solr:${ISLANDORA_TAG}
