@@ -4,10 +4,10 @@ ARG TAG
 FROM ${REPOSITORY}/drupal:${TAG} AS workbench
 
 ARG TARGETARCH
-ARG WORKBENCH_COMMIT=756d126
+ARG WORKBENCH_COMMIT=b0dcc1b
 ARG WORKBENCH_FILE=${WORKBENCH_COMMIT}.tar.gz
 ARG WORKBENCH_URL=https://github.com/mjordan/islandora_workbench/archive/${WORKBENCH_FILE}
-ARG WORKBENCH_SHA256=0ab788dd03773e185ec08f118f9f8f830a63a3d44e6d9ee6f8ec63abe0118f70
+ARG WORKBENCH_SHA256=e5ea72bd5661c46ee9f434dbc7cf31839365c934d120b2310204ac3f4e3464f4
 
 RUN --mount=type=cache,id=sandbox-apk-${TARGETARCH},sharing=locked,target=/var/cache/apk \
     apk add \
