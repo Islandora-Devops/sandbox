@@ -4,10 +4,10 @@ ARG TAG
 FROM ${REPOSITORY}/drupal:${TAG} AS workbench
 
 ARG TARGETARCH
-ARG WORKBENCH_COMMIT=b0dcc1b
+ARG WORKBENCH_COMMIT=5064454
 ARG WORKBENCH_FILE=${WORKBENCH_COMMIT}.tar.gz
 ARG WORKBENCH_URL=https://github.com/mjordan/islandora_workbench/archive/${WORKBENCH_FILE}
-ARG WORKBENCH_SHA256=e5ea72bd5661c46ee9f434dbc7cf31839365c934d120b2310204ac3f4e3464f4
+ARG WORKBENCH_SHA256=0ab4c40c9a9d2c03c3d69792e2cf8e854dd311a2922455e2f09df733cdc38a2f
 
 RUN --mount=type=cache,id=sandbox-apk-${TARGETARCH},sharing=locked,target=/var/cache/apk \
     apk add \
@@ -50,10 +50,10 @@ RUN --mount=type=cache,id=sandbox-downloads-${TARGETARCH},sharing=locked,target=
 FROM ${REPOSITORY}/drupal:${TAG} AS starter
 
 ARG TARGETARCH
-ARG STARTER_SITE_COMMIT=db2ecb0
+ARG STARTER_SITE_COMMIT=3882ef2
 ARG STARTER_SITE_FILE=${STARTER_SITE_COMMIT}.tar.gz
 ARG STARTER_SITE_URL=https://github.com/Islandora-Devops/islandora-starter-site/archive/${STARTER_SITE_FILE}
-ARG STARTER_SITE_SHA256=cc14a6f86d072b3e75720a1d73fca37fb466662db9aeba51a97cfbed0076444b
+ARG STARTER_SITE_SHA256=bd73f99cac27ed7ad8158b9df1f9b70ec1f387547e592177f680eab853ada0fc
 
 RUN --mount=type=cache,id=sandbox-downloads-${TARGETARCH},sharing=locked,target=/opt/downloads \
     download.sh \
