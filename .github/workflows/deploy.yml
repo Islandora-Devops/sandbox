@@ -9,8 +9,8 @@ on:
     types: [opened, synchronize, closed]
 
 concurrency:
-  group: ${{ github.event.action == 'closed' && 'deploy-cleanup' || 'deploy' }}
-  cancel-in-progress: ${{ github.event.action != 'closed' }}
+  group: deploy
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -22,23 +22,11 @@ jobs:
       environment: test
       environment_url: https://test.islandora.ca
 
-  sandbox:
-    name: Deploy to sandbox.islandora.ca
-    needs: [test]
-    if: github.event_name == 'push'
-    uses: ./.github/workflows/create.yml
-    secrets: inherit
-    with:
-      environment: sandbox
-      environment_url: https://sandbox.islandora.ca
-
-  cleanup:
+  destroy-test:
     name: Destroy test.islandora.ca
-    if: github.event.action == 'closed' && github.event.pull_request.merged == true
+    needs: [test]
+    if: ${{ always() && github.event_name == 'pull_request' && github.event.action != 'closed' }}
     runs-on: ubuntu-latest
-    environment:
-      name: test
-      url: https://test.islandora.ca
     steps:
       - name: Set up doctl
         uses: digitalocean/action-doctl@v2
@@ -47,8 +35,7 @@ jobs:
       - name: Get droplet ID
         id: get_droplet
         run: |
-          name="test"
-          droplet_id=$(doctl compute droplet list --format ID,Name --no-header | grep " ${name}\$" | awk '{print $1}')
+          droplet_id=$(doctl compute droplet list --format ID,Name --no-header | grep " test\$" | awk '{print $1}')
           echo "droplet_id=$droplet_id" >> $GITHUB_OUTPUT
       - name: Destroy droplet
         if: ${{ steps.get_droplet.outputs.droplet_id != '' }}
@@ -62,3 +49,13 @@ jobs:
             doctl compute volume-action detach "${vol_id}" --droplet-id "${droplet_id}" --wait
           done
           doctl compute droplet delete "$droplet_id" --force
+
+  sandbox:
+    name: Deploy to sandbox.islandora.ca
+    needs: [test]
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/create.yml
+    secrets: inherit
+    with:
+      environment: sandbox
+      environment_url: https://sandbox.islandora.ca
