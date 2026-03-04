@@ -1,223 +1,119 @@
 # Islandora Sandbox <!-- omit in toc -->
 
 [![LICENSE](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](./LICENSE)
-[![Build](https://github.com/Islandora-Devops/sandbox/actions/workflows/push.yml/badge.svg)](https://github.com/Islandora-Devops/sandbox/actions/workflows/push.yml)
+[![Deploy](https://github.com/Islandora-Devops/sandbox/actions/workflows/deploy.yml/badge.svg)](https://github.com/Islandora-Devops/sandbox/actions/workflows/deploy.yml)
 
 ## Table of Contents <!-- omit in toc -->
 - [Introduction](#introduction)
 - [Requirements](#requirements)
-- [Running Locally](#running-locally)
-- [Updating](#updating)
-- [Releases](#releases)
 - [GitHub Actions](#github-actions)
+  - [Deployment Flow](#deployment-flow)
+  - [Workflows](#workflows)
   - [Deployment Environments](#deployment-environments)
   - [Environment Variables](#environment-variables)
+  - [Secrets](#secrets)
   - [Domains](#domains)
-  - [Volumes](#volumes)
 
 ## Introduction
 
-This repository is responsible for packaging, uploading, and deploying releases
-of the [Islandora Sandbox] on [Digital Ocean]. It is **not** intended as a
-starting point for new users or those unfamiliar with Docker and basic server
-administration.
+This repository deploys the [Islandora Sandbox] on [Digital Ocean] using
+[Fedora CoreOS] and [isle-site-template]. It serves as a reference example of
+how to deploy Islandora on DigitalOcean using GitHub Actions.
+
+It is **not** intended as a starting point for new users or those unfamiliar
+with Docker and basic server administration.
 
 If you are looking to use Islandora, please read the [official documentation]
-and use either [isle-dc] or [isle-site-template] to deploy via Docker, or the
+and use [isle-site-template] to deploy via Docker, or the
 [islandora-playbook] to deploy via Ansible.
 
 ## Requirements
 
-- [Docker 20.10+](https://docs.docker.com/get-docker/)
-
-## Running Locally
-
-To build the sandbox locally, use the following command:
-
-```bash
-docker compose build
-```
-
-Then you can bring up the sandbox with the following command:
-
-```bash
-docker compose up -d
-```
-> Note: It may take **a few minutes** to start, as the site installation and
-> data import processes need to be completed.
-
-This will bring up the environment based on [islandora-starter-site]. After
-about a minute or two you can monitor the progress by visiting the site at
-<http://islandora.io>:
-
-![install-message](./docs/install-message.png)
-
-By default the credentials for everything will be:
-
-| Field    | Value    |
-| :------- | :------- |
-| Username | admin    |
-| Password | password |
-
-Additionally all other services and be found at their respective sub-domains.
-
-| Service    | URL                                     |
-| :--------- | :-------------------------------------- |
-| Drupal     | http://islandora.io                     |
-| ActiveMQ   | http://activemq.islandora.io            |
-| Blazegraph | http://blazegraph.islandora.io/bigdata/ |
-| Fedora     | http://fcrepo.islandora.io/fcrepo/rest/ |
-| Cantaloupe | http://islandora.io/cantaloupe          |
-| Solr       | http://solr.islandora.io                |
-| Traefik    | http://traefik.islandora.io             |
-
-This will use the **current** [buildx] builder instance. See [isle-builder] for
-how to setup and use a builder for multi-platform builds.
-
-## Updating
-
-This repository makes use of the Docker images produced by [isle-buildkit].
-Since the data in this repository is meant to be ephemeral you can safely update
-the images without requiring migrations of existing data.
-
-You can change the commit used for external dependencies:
-
-- [islandora_workbench]
-- [islandora_demo_objects]
-- [islandora-starter-site]
-
-By modifying the appropriate `XXX_COMMIT` build argument in
-[drupal/Dockerfile](./drupal/Dockerfile). Then, update the `XXX_SHA256` with the
-following commands (replacing `var=STARTER_SITE` with the appropriate prefix for the
-dependency you are updating):
-
-```bash
-var=STARTER_SITE
-commit=$(grep -E "^ARG ${var}_COMMIT" drupal/Dockerfile | awk -F= '{print $2}' | tr -d '\n')
-file=$(grep -E "^ARG ${var}_FILE" drupal/Dockerfile | awk -F= '{print $2}' | tr -d '\n' | sed "s/\${${var}_COMMIT}/$commit/")
-url=$(grep -E "^ARG ${var}_URL" drupal/Dockerfile | awk -F= '{print $2}' | tr -d '\n' | sed "s/\${${var}_FILE}/$file/")
-sha256=$(curl -sL $url | shasum -a 256 | awk '{print $1}')
-sed -e "s/ARG ${var}_SHA256=.*/ARG ${var}_SHA256=${sha256}/" -i '' drupal/Dockerfile
-```
-
-The sandbox will only use the updated values once a release is cut
-(see next section).
-
-## Releases
-
-Creating a new release will trigger two [Actions](#github-actions):
-
-1. Push a new deployment to [Digital Ocean] performed by [deploy.yml].
-2. Package a zip file for local use and attach it to the release, performed by [package.yml].
-
-To create a new release, follow the usual release steps in GitHub:
-
-1. Go to [releases].
-2. Select `Draft new release`.
-3. Enter a new tag by incrementing the number from the previous release.
-4. Select `Create a new tag: x.x.x on publish`, targeting the `main` branch.
-5. Select `Generate release notes`.
-6. Add any additional notes you think are relevant.
-7. Make sure `Set as the latest release` is selected.
-8. Click `Publish release`.
-
-These steps will trigger the aforementioned Github Actions, which
-will not complete without committer approval.
-
-The release will first deploy to https://test.islandora.ca where 
-you can review the deployment. 
-
-Once verified, you can visit the [Deploy action's page](https://github.com/Islandora-Devops/sandbox/actions/workflows/deploy.yml)
-to either approve or cancel the workflow. 
-
-When approved, the sandbox will then deploy to:
-<https://sandbox.islandora.ca>. Afterward, the deployment at
-<https://test.sandbox.islandora.ca> will be destroyed.
+- A [Digital Ocean] account with a reserved IP address per environment
+- A Fedora CoreOS snapshot created via [snapshot.yml] (see below)
+- GitHub repository secrets and variables configured (see [Secrets] and [Environment Variables])
 
 ## GitHub Actions
 
-This repository utilizes [GitHub Actions] for various tasks.
+### Deployment Flow
 
-| Workflow       | Trigger                  | Description                                                                                                                                                                                                         |
-| :------------- | :----------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [deploy.yml]   | On new tag               | Builds and pushes `islandora/sandbox:${TAG}` image and deploys it to [Digital Ocean].                                                                                                                               |
-| [package.yml]  | On new release           | Creates a zip file containing a Docker Compose configuration file for an Islandora Sandbox, and attaches it to a GitHub release.                                                                                    |
-| [push.yml]     | On push to `main` branch | Builds and pushes `islandora/sandbox:main` image.                                                                                                                                                                   |
-| [snapshot.yml] | Manually                 | Creates a snapshot of a Fedora CoreOS image on DigitalOcean. Used as the base image for deployments to [Digital Ocean]. Note that this **does not wait** for completion and may take a long time (1h+ to complete). |
+| Event | Test (test.islandora.ca) | Sandbox (sandbox.islandora.ca) |
+| :---- | :----------------------- | :----------------------------- |
+| PR opened / commit pushed to PR | Deployed, health checked, then **destroyed** | — |
+| Merged to `main` | — | Deployed |
 
-The above workflows make use of the following [reusable workflows]:
+On each PR event a fresh droplet is created, [isle-site-template] is cloned and
+initialised, a health check polls `/node/1?_format=json` for up to 15 minutes,
+and the droplet is **always destroyed afterward** — whether the check passed or
+failed — to avoid unnecessary billing.
 
-| Workflow     | Description                                                                                                                               |
-| :----------- | :---------------------------------------------------------------------------------------------------------------------------------------- |
-| [bake.yml]   | Builds and pushes a Docker image to a Docker registry.                                                                                    |
-| [create.yml] | Creates a DigitalOcean Droplet and assigns it a reserved IP address. Destroys any preexisting droplet with the same name before creation. |
+### Workflows
+
+| Workflow | Trigger | Description |
+| :------- | :------ | :---------- |
+| [deploy.yml] | PR opened/updated, push to `main` | Deploys to test on PRs (destroyed after health check); deploys to sandbox on merge to `main`. |
+| [snapshot.yml] | Monthly (1st) or manually | Imports the latest stable Fedora CoreOS DigitalOcean image into your account and prunes old `coreos`-tagged snapshots. |
+| [create.yml] | Called by [deploy.yml] | Creates a DigitalOcean droplet, clones [isle-site-template], runs `make init build demo-objects`, health checks the site, and assigns the reserved IP. Destroys any pre-existing droplet with the same name first. |
 
 ### Deployment Environments
 
-We use two [deployment environments] for [GitHub Actions], defined in the
-[environment settings] of the GitHub repository.
+Two [deployment environments] are defined in the [environment settings] of the
+GitHub repository:
 
-- test
-- sandbox
+- `test` — ephemeral, destroyed after each health check
+- `sandbox` — long-lived, deployed on every merge to `main`
 
 ### Environment Variables
 
-Each deployment environment has specific variables used to distinguish them from one another.
+Each environment has the following variables:
 
-| Deployment Environment | DOMAIN                    | RESERVED_IP_ADDRESS | VOLUME_NAME          |
-| :--------------------- | :------------------------ | :------------------ | :------------------- |
-| test                   | test.sandbox.islandora.ca | 174.138.112.33      | test-certificates    |
-| sandbox                | sandbox.islandora.ca      | 159.203.49.92       | sandbox-certificates |
+| Variable | test | sandbox |
+| :------- | :--- | :------ |
+| `DOMAIN` | `test.islandora.ca` | `sandbox.islandora.ca` |
+| `RESERVED_IP_ADDRESS` | `174.138.112.33` | `159.203.49.92` |
 
-Additionally, several variables are shared between both environments.
+The following variables are shared across both environments:
 
-| Variable      | Example Value                                                | Description                                                                          |
-| :------------ | :----------------------------------------------------------- | :----------------------------------------------------------------------------------- |
-| REGION        | `tor1`                                                       | The region for deploying [Digital Ocean] droplets.                                   |
-| SIZE          | `s-4vcpu-8gb-intel`                                          | The size of the droplet to create when deploying.                                    |
-| SNAPSHOT_NAME | `fedora-coreos-37.20230205.3.0-digitalocean.x86_64.qcow2.gz` | The snapshot image used for deployment, created by the [snapshot.yml] GitHub Action. |
-| SSH_KEY_NAME  | `default`                                                    | The SSH key deployed to the droplet on creation.                                     |
+| Variable | Example | Description |
+| :------- | :------ | :---------- |
+| `REGION` | `tor1 nyc1 nyc3` | Space-separated list of DigitalOcean regions in preference order. The first region with an available size is used. |
+| `SIZE` | `s-4vcpu-8gb-amd s-4vcpu-8gb-intel s-4vcpu-8gb` | Space-separated list of droplet sizes in preference order. Tried in order within each region until one is available. |
+| `SSH_KEY_NAME` | `default` | Name of the SSH key in your DigitalOcean account deployed to the droplet. |
+
+The snapshot image is selected automatically by querying for the most recently
+created DigitalOcean image tagged `coreos`. Run [snapshot.yml] to create or
+refresh it.
+
+### Secrets
+
+| Secret | Description |
+| :----- | :---------- |
+| `DIGITALOCEAN_API_TOKEN` | DigitalOcean API token with read/write access. |
+| `ISLE_PASSWORD` | Password written to the `ACTIVEMQ_WEB_ADMIN_PASSWORD` and `DRUPAL_DEFAULT_ACCOUNT_PASSWORD` secret files consumed by [isle-site-template]. |
 
 ### Domains
 
-Domains are registered via [hover] but we use [Digital Ocean] nameservers
-instead of those provided by [hover], as we needed support for DNS challenges to
-automatically generate wildcard certificates. LetsEncrypt does not support
-[hover].
+Domains are registered via [hover] but use [Digital Ocean] nameservers, as
+LetsEncrypt DNS challenges are not supported by [hover]. The `DOMAIN` and
+`RESERVED_IP_ADDRESS` for each environment must match the `A Records` configured
+in [Digital Ocean].
 
-The `DOMAIN` and `RESERVED_IP_ADDRESS` mentioned in the
-[previous section](#environment-variables) must match the `A Records` in the
-nameservers set up in [Digital Ocean].
+TLS certificates are issued via Let's Encrypt HTTP challenge and managed by
+Traefik within the [isle-site-template] stack. Certificates are not persisted
+across deployments.
 
-### Volumes
-
-Each volume referenced by the `VOLUME_NAME` environment variable refers to a
-manually configured volume storing the certificates generated by LetsEncrypt.
-This avoids hitting rate limit problems when performing multiple deployments in
-a week, as the number of requests allowed by LetsEncrypt is very low.
-
-[bake.yml]: .github/workflows/bake.yml
-[buildx]: https://docs.docker.com/engine/reference/commandline/buildx
 [create.yml]: .github/workflows/create.yml
 [deploy.yml]: .github/workflows/deploy.yml
 [deployment environments]: https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment
 [Digital Ocean]: https://www.digitalocean.com/
 [environment settings]: https://github.com/Islandora-Devops/sandbox/settings/environments
+[Fedora CoreOS]: https://fedoraproject.org/coreos/
 [Github Actions]: https://docs.github.com/en/actions/quickstart
 [hover]: https://www.hover.com/
 [Islandora Sandbox]: https://sandbox.islandora.ca/
-[islandora_demo_objects]: https://github.com/Islandora-Devops/islandora_demo_objects
-[islandora_workbench]: https://github.com/mjordan/islandora_workbench
 [islandora-playbook]: https://github.com/Islandora-Devops/islandora-playbook
-[islandora-starter-site]: https://github.com/Islandora/islandora-starter-site
-[islandora-starter-site]: https://github.com/Islandora/islandora-starter-site
-[isle-builder]: https://github.com/Islandora-Devops/isle-builder
-[isle-buildkit]: https://github.com/Islandora-Devops/isle-buildkit
-[isle-dc]: https://github.com/Islandora-Devops/isle-dc
 [isle-site-template]: https://github.com/Islandora-Devops/isle-site-template
 [official documentation]: https://islandora.github.io/documentation/
-[package.yml]: .github/workflows/package.yml
-[push.yml]: .github/workflows/push.yml
-[releases]: https://github.com/Islandora-Devops/sandbox/releases
 [reusable workflows]: https://docs.github.com/en/actions/using-workflows/reusing-workflows
+[Secrets]: #secrets
 [snapshot.yml]: .github/workflows/snapshot.yml
