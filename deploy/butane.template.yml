@@ -84,6 +84,7 @@ systemd:
         Group=core
         Type=oneshot
         RemainAfterExit=true
+        Environment=TERM=xterm
         ExecStart=/usr/bin/bash /opt/sandbox/setup.sh
 
         [Install]
