@@ -1,40 +1,40 @@
 name: Deploy
 
 on:
-  workflow_dispatch:
   push:
-    tags:
-      - "*"
+    branches:
+      - main
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, closed]
 
 concurrency:
-  group: deploy
-  cancel-in-progress: true
+  group: ${{ github.event.action == 'closed' && 'deploy-cleanup' || 'deploy' }}
+  cancel-in-progress: ${{ github.event.action != 'closed' }}
 
 jobs:
-  bake:
-    name: Build and push
-    uses: ./.github/workflows/bake.yml
-    secrets: inherit
   test:
     name: Deploy to test.islandora.ca
-    needs: bake
+    if: github.event.action != 'closed'
     uses: ./.github/workflows/create.yml
     secrets: inherit
     with:
       environment: test
       environment_url: https://test.islandora.ca
+
   sandbox:
-    needs: test
     name: Deploy to sandbox.islandora.ca
+    needs: [test]
+    if: github.event_name == 'push'
     uses: ./.github/workflows/create.yml
     secrets: inherit
     with:
       environment: sandbox
       environment_url: https://sandbox.islandora.ca
+
   cleanup:
     name: Destroy test.islandora.ca
-    if: success()
-    needs: sandbox # Blocked by approval for sandbox.
+    if: github.event.action == 'closed' && github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     environment:
       name: test
@@ -51,7 +51,7 @@ jobs:
           droplet_id=$(doctl compute droplet list --format ID,Name --no-header | grep " ${name}\$" | awk '{print $1}')
           echo "droplet_id=$droplet_id" >> $GITHUB_OUTPUT
       - name: Destroy droplet
-        if : ${{ steps.get_droplet.outputs.droplet_id != '' }}
+        if: ${{ steps.get_droplet.outputs.droplet_id != '' }}
         run: |
           droplet_id="${{ steps.get_droplet.outputs.droplet_id }}"
           doctl compute droplet delete "$droplet_id" --force

@@ -9,24 +9,10 @@ passwd:
       # Consult Bitwarden.
       ssh_authorized_keys:
         - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC92mfUd/zMuzWqAod/xuqrE2to4ae1cRiknK81uMHfVHpXoxx2xM7PkmMsO9ShQtWsu0V0q4A9kozzv22HVDL51iVapESrM4q2KWiDHnE45U8RH/DDRX5NdW3+GvNQk2ITyHR4CVpvwYXCYfI4bha4R4jF7oc7pDmLcgcYN+9OSptUnWUbxqiWqfuwWSmux9N1HHiVDTt/2W8qgszAzwXI64ooK5pkU7KSXQ9A/w4Ra/xmZioCKAB4MZh5HIwNoVgZ8OCXLBL66cQTJEQnmkCc3rVeHikBhvUxCnKWGmdjcBG/XGxqHIQ1HVn7GSlclJ8hGISZZcBaB4RVFCUK4i8tvKbM1dHNyNnZGAWJUCMQDH8Dkx8wnOAWdq4ed1cd16Jt3y4cEcHEUSXmZmViYMNHbqqL+yaj3nhCDIwa7CzoVLZ4Vj8xOvn/X2JMaLPhJFY//5Y6Dep01Nm+4d0Xf4gYo3H6Hmo/jBeXO/VRPHKbbZIMlA04mrlClosgUqkm+cE=
+        # add additional keys for other Islandora committers
+        - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHZds7DX1z9IN0T7H/yXZrUIlOHiPzqK9oWN8brKh06e jjc223@Mac
 systemd:
   units:
-    #- name: var-opt-sandbox-acme.mount
-    #  enabled: true
-    #  contents: |
-    #    [Unit]
-    #    Description=Mount DigitalOcean Volume at /opt/sandbox/acme
-    #    Requires=local-fs.target
-    #    After=local-fs.target
-#
-    #    [Mount]
-    #    What=/dev/disk/by-id/scsi-0DO_Volume_${VOLUME_NAME}
-    #    Where=/opt/sandbox/acme
-    #    Type=ext4
-    #    Options=defaults
-#
-    #    [Install]
-    #    WantedBy=multi-user.target
     - name: install-docker-compose.service
       enabled: true
       contents: |
@@ -40,7 +26,7 @@ systemd:
         Group=root
         Type=oneshot
         RemainAfterExit=true
-        ExecStart=/usr/bin/sh -ec "mkdir -p /usr/local/lib/docker/cli-plugins && curl -L https://github.com/docker/compose/releases/download/v2.16.0/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose && chmod a+x /usr/local/lib/docker/cli-plugins/docker-compose"
+        ExecStart=/usr/bin/sh -ec "mkdir -p /usr/local/lib/docker/cli-plugins && curl -L https://github.com/docker/compose/releases/download/v5.1.0/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose && chmod a+x /usr/local/lib/docker/cli-plugins/docker-compose"
 
         [Install]
         WantedBy=multi-user.target
@@ -70,22 +56,56 @@ systemd:
 
         [Install]
         WantedBy=timers.target
+    - name: install-make.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Install make
+        ConditionPathExists=!/usr/bin/make
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/usr/bin/rpm-ostree install --apply-live make
+
+        [Install]
+        WantedBy=multi-user.target
+    - name: setup-sandbox.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Clone and initialise isle-site-template
+        Requires=docker.service install-docker-compose.service install-make.service
+        After=docker.service install-docker-compose.service install-make.service
+        ConditionPathExists=!/opt/sandbox/isle-site-template
+
+        [Service]
+        User=core
+        Group=core
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/usr/bin/bash /opt/sandbox/setup.sh
+
+        [Install]
+        WantedBy=multi-user.target
     - name: sandbox.service
       enabled: true
       contents: |
         [Unit]
-        Description= Islandora Sandbox
+        Description=Islandora Sandbox
         PartOf=docker.service
         After=docker.service
         Requires=install-docker-compose.service
         After=install-docker-compose.service
+        Requires=setup-sandbox.service
+        After=setup-sandbox.service
         Requires=var-opt-sandbox-acme.mount
         After=var-opt-sandbox-acme.mount
 
         [Service]
         User=core
         Group=core
-        WorkingDirectory=/opt/sandbox
+        WorkingDirectory=/opt/sandbox/isle-site-template
         ExecStartPre=/usr/bin/docker compose down -v
         ExecStart=/usr/bin/docker compose up
         ExecStop=/usr/bin/docker compose down -v
@@ -102,6 +122,12 @@ storage:
         name: root
     - path: /opt/sandbox
       mode: 0755
+      user:
+        name: core
+      group:
+        name: core
+    - path: /opt/sandbox/.secrets
+      mode: 0700
       user:
         name: core
       group:
@@ -129,6 +155,32 @@ storage:
           AuthenticationMethods publickey
           PubkeyAcceptedKeyTypes +ssh-rsa
           PubkeyAcceptedAlgorithms +ssh-rsa
+    - path: /opt/sandbox/.secrets/ACTIVEMQ_WEB_ADMIN_PASSWORD
+      mode: 0600
+      user:
+        name: core
+      group:
+        name: core
+      contents:
+        inline: |
+          ${ISLE_PASSWORD}
+    - path: /opt/sandbox/.secrets/DRUPAL_DEFAULT_ACCOUNT_PASSWORD
+      mode: 0600
+      user:
+        name: core
+      group:
+        name: core
+      contents:
+        inline: |
+          ${ISLE_PASSWORD}
+    - path: /opt/sandbox/setup.sh
+      mode: 0750
+      user:
+        name: core
+      group:
+        name: core
+      contents:
+        local: setup.sh
     - path: /opt/sandbox/.env
       mode: 0644
       user:
@@ -143,14 +195,6 @@ storage:
           ISLANDORA_TAG=${ISLANDORA_TAG}
           REPOSITORY=${REPOSITORY}
           TAG=${TAG}
-    - path: /opt/sandbox/docker-compose.yml
-      mode: 0644
-      user:
-        name: core
-      group:
-        name: core
-      contents:
-        local: docker-compose.yml
   filesystems:
     # To prevent issues with rate limits on certificate generation, we persist generated certificates to a volume.
     - path: /var/opt/sandbox/acme
