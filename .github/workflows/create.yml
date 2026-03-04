@@ -145,6 +145,9 @@ jobs:
       - name: Health check
         run: |
           url="${{ inputs.environment_url }}"
+          echo "Giving VM 10m to come online.."
+          sleep 600
+
           echo "Waiting for ${url} to become available..."
           for i in $(seq 1 30); do
             response=$(curl -sf "${url}/node/1?_format=json" 2>/dev/null) || true
