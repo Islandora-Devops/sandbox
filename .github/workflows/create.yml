@@ -89,11 +89,20 @@ jobs:
       - name: Resolve region and size
         id: resolve
         run: |
-          size_data=$(doctl compute size list --format Slug,Regions --no-header)
+          region_data=$(curl -sf "https://api.digitalocean.com/v2/regions?per_page=200" \
+            -H "Authorization: Bearer ${{ secrets.DIGITALOCEAN_API_TOKEN }}")
+          echo "=== Available sizes per region ==="
           for region in ${{ vars.REGION }}; do
-            available=$(echo "$size_data" | awk -v r="$region" '$2 ~ r {print $1}')
+            sizes=$(echo "$region_data" | jq -r --arg r "$region" \
+              '.regions[] | select(.slug == $r) | .sizes[]')
+            echo "$region: $sizes"
+          done
+          echo "=================================="
+          for region in ${{ vars.REGION }}; do
             for size in ${{ vars.SIZE }}; do
-              if echo "$available" | grep -qx "$size"; then
+              match=$(echo "$region_data" | jq -r --arg r "$region" --arg s "$size" \
+                '.regions[] | select(.slug == $r) | .sizes[] | select(. == $s)')
+              if [[ -n "$match" ]]; then
                 echo "size=$size" >> $GITHUB_OUTPUT
                 echo "region=$region" >> $GITHUB_OUTPUT
                 echo "Selected: $size in $region"
@@ -127,12 +136,18 @@ jobs:
           url="${{ inputs.environment_url }}"
           echo "Waiting for ${url} to become available..."
           for i in $(seq 1 30); do
-            nid=$(curl -sf "${url}/node/1?_format=json" | jq -e '.nid[0].value' 2>/dev/null)
-            if [ -n "$nid" ]; then
-              echo "Health check passed (nid=${nid})"
-              exit 0
+            response=$(curl -sf "${url}/node/1?_format=json" 2>/dev/null) || true
+            if [[ -n "$response" ]]; then
+              nid=$(echo "$response" | jq -re '.nid[0].value' 2>/dev/null) || true
+              if [[ -n "$nid" ]]; then
+                echo "Health check passed (nid=${nid})"
+                exit 0
+              else
+                echo "Attempt ${i}/30: unexpected response: ${response:0:200}"
+              fi
+            else
+              echo "Attempt ${i}/30: no response yet"
             fi
-            echo "Attempt ${i}/30 failed, retrying in 30s..."
             sleep 30
           done
           echo "Health check failed after 15 minutes"
