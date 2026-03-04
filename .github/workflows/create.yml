@@ -16,6 +16,8 @@ on:
         required: true
       ISLE_PASSWORD:
         required: true
+      PACKER_SSH_KEY:
+        required: true
 
 jobs:
   create:
@@ -145,8 +147,8 @@ jobs:
       - name: Health check
         run: |
           url="${{ inputs.environment_url }}"
-          echo "Giving VM 10m to come online.."
-          sleep 600
+          echo "Giving VM 5m to come online.."
+          sleep 300
 
           echo "Waiting for ${url} to become available..."
           for i in $(seq 1 30); do
@@ -166,3 +168,13 @@ jobs:
           done
           echo "Health check failed after 15 minutes"
           exit 1
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          reserved_ip="${{ vars.RESERVED_IP_ADDRESS }}"
+          echo "${{ secrets.PACKER_SSH_KEY }}" > /tmp/ssh_key
+          chmod 600 /tmp/ssh_key
+          ssh -o StrictHostKeyChecking=no -i /tmp/ssh_key "core@${reserved_ip}" \
+            "sudo journalctl -u setup-sandbox.service --no-pager -n 100; \
+             sudo journalctl -u sandbox.service --no-pager -n 50"
+          rm -f /tmp/ssh_key
