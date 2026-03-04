@@ -1,7 +1,7 @@
 {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: [
-    'github>islandora-devops/.gitjub:renovate.json5',
+    'github>islandora-devops/.github:renovate.json5',
   ],
   customManagers: [
     {
