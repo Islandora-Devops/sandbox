@@ -4,5 +4,3 @@
 # Build outputs.
 build
 .terraform
-# Ignore per / user customizations.
-docker-compose.override.yml

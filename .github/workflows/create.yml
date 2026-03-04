@@ -14,6 +14,10 @@ on:
     secrets:
       DIGITALOCEAN_API_TOKEN:
         required: true
+      ISLE_PASSWORD:
+        required: true
+      PACKER_SSH_KEY:
+        required: true
 
 jobs:
   create:
@@ -25,21 +29,35 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-      - name: Load defaults form .env file
+      - name: Generate config files
         run: |
-          echo "Loading environment variables from .env file..."
           set -o allexport
           source .env
           set +o allexport
 
-          echo "Override with environment variables from Github..."
           export DIGITALOCEAN_API_TOKEN="${{ secrets.DIGITALOCEAN_API_TOKEN }}"
+          export ISLE_PASSWORD="${{ secrets.ISLE_PASSWORD }}"
           export DOMAIN="${{ vars.DOMAIN }}"
-          export TAG="${{ github.ref_name }}"
-          export VOLUME_NAME="${{ vars.VOLUME_NAME }}"
+          export TAG="sandbox"
+
+          # Build sandbox.env by resolving each key in .env against the current
+          # environment, so GitHub Actions values override the local defaults.
+          while IFS= read -r line; do
+            if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)= ]]; then
+              key="${BASH_REMATCH[1]}"
+              echo "$key=${!key}"
+            else
+              echo "$line"
+            fi
+          done < .env > ./deploy/sandbox.env
+
+          # Append GitHub Actions overrides not sourced from .env
+          for var in DOMAIN TAG; do
+            sed -i "/^${var}=/d" ./deploy/sandbox.env
+            echo "${var}=${!var}" >> ./deploy/sandbox.env
+          done
 
           envsubst < ./deploy/butane.template.yml > ./deploy/butane.yml
-          cat ./deploy/butane.yml
       - name: Build Ignition Config
         id: build_ignition
         run: |
@@ -56,15 +74,27 @@ jobs:
           droplet_id=$(doctl compute droplet list --format ID,Name --no-header | grep " ${name}\$" | awk '{print $1}')
           echo "droplet_id=$droplet_id" >> $GITHUB_OUTPUT
       - name: Destroy pre-existing droplet
-        if : ${{ steps.get_droplet.outputs.droplet_id != '' }}
+        if: ${{ steps.get_droplet.outputs.droplet_id != '' }}
         run: |
           droplet_id="${{ steps.get_droplet.outputs.droplet_id }}"
+          vol_ids=$(curl -sf "https://api.digitalocean.com/v2/droplets/${droplet_id}" \
+            -H "Authorization: Bearer ${{ secrets.DIGITALOCEAN_API_TOKEN }}" | \
+            jq -r '.droplet.volume_ids[]' 2>/dev/null || true)
+          for vol_id in $vol_ids; do
+            echo "Detaching volume ${vol_id}..."
+            doctl compute volume-action detach "${vol_id}" --droplet-id "${droplet_id}" --wait
+          done
           doctl compute droplet delete "$droplet_id" --force
       - name: Get image ID
         id: get_image
         run: |
-          image_name="${{ vars.IMAGE_NAME }}"
-          image_id=$(doctl compute image list --format ID,Name --no-header | grep " $image_name\$" | awk '{print $1}')
+          image_id=$(curl -sf "https://api.digitalocean.com/v2/images?type=user&tag_name=coreos&per_page=100" \
+            -H "Authorization: Bearer ${{ secrets.DIGITALOCEAN_API_TOKEN }}" | \
+            jq -r '.images | sort_by(.created_at) | reverse | .[0].id')
+          if [[ -z "$image_id" || "$image_id" == "null" ]]; then
+            echo "No coreos-tagged image found. Run the snapshot workflow first."
+            exit 1
+          fi
           echo "image_id=$image_id" >> $GITHUB_OUTPUT
       - name: Get ssh key ID
         id: get_ssh_key
@@ -72,26 +102,79 @@ jobs:
           ssh_key_name="${{ vars.SSH_KEY_NAME }}"
           ssh_key_id=$(doctl compute ssh-key list --format ID,Name --no-header | grep " $ssh_key_name\$" | awk '{print $1}')
           echo "ssh_key_id=$ssh_key_id" >> $GITHUB_OUTPUT
-      - name: Get volume ID
-        id: get_volume
+      - name: Resolve region and size
+        id: resolve
         run: |
-          volume_name="${{ vars.VOLUME_NAME }}"
-          volume_id=$(doctl compute volume list --format ID,Name --no-header | grep " $volume_name\$" | awk '{print $1}')
-          echo "volume_id=$volume_id" >> $GITHUB_OUTPUT
+          region_data=$(curl -sf "https://api.digitalocean.com/v2/regions?per_page=200" \
+            -H "Authorization: Bearer ${{ secrets.DIGITALOCEAN_API_TOKEN }}")
+          echo "=== Available sizes per region ==="
+          for region in ${{ vars.REGION }}; do
+            sizes=$(echo "$region_data" | jq -r --arg r "$region" \
+              '.regions[] | select(.slug == $r) | .sizes[]')
+            echo "$region: $sizes"
+          done
+          echo "=================================="
+          for region in ${{ vars.REGION }}; do
+            for size in ${{ vars.SIZE }}; do
+              match=$(echo "$region_data" | jq -r --arg r "$region" --arg s "$size" \
+                '.regions[] | select(.slug == $r) | .sizes[] | select(. == $s)')
+              if [[ -n "$match" ]]; then
+                echo "size=$size" >> $GITHUB_OUTPUT
+                echo "region=$region" >> $GITHUB_OUTPUT
+                echo "Selected: $size in $region"
+                exit 0
+              fi
+            done
+          done
+          echo "No combination of sizes (${{ vars.SIZE }}) and regions (${{ vars.REGION }}) is available"
+          exit 1
       - name: Create droplet
         id: create_droplet
         run: |
           name="${{ inputs.environment }}"
-          size="${{ vars.SIZE }}"
-          region="${{ vars.REGION }}"
+          size="${{ steps.resolve.outputs.size }}"
+          region="${{ steps.resolve.outputs.region }}"
           image_id="${{ steps.get_image.outputs.image_id }}"
           ssh_key_id="${{ steps.get_ssh_key.outputs.ssh_key_id }}"
-          volume_id="${{ steps.get_volume.outputs.volume_id }}"
           data_file="${{ steps.build_ignition.outputs.file }}"
-          droplet_id=$(doctl compute droplet create "${name}" --size "${size}" --region "${region}" --image "${image_id}" --ssh-keys "${ssh_key_id}" --volumes "${volume_id}" --user-data-file "${data_file}" --format ID --no-header --wait)
+          droplet_id=$(doctl compute droplet create "${name}" --size "${size}" --region "${region}" --image "${image_id}" --ssh-keys "${ssh_key_id}" --user-data-file "${data_file}" --format ID --no-header --wait)
           echo "droplet_id=${droplet_id}" >> $GITHUB_OUTPUT
       - name: Bind Reserved IP address to droplet
         run: |
           droplet_id="${{ steps.create_droplet.outputs.droplet_id }}"
           reserved_ip="${{ vars.RESERVED_IP_ADDRESS }}"
           doctl compute floating-ip-action assign "$reserved_ip" "$droplet_id"
+      - name: Health check
+        run: |
+          url="${{ inputs.environment_url }}"
+          echo "Giving VM 5m to come online.."
+          sleep 300
+
+          echo "Waiting for ${url} to become available..."
+          for i in $(seq 1 30); do
+            response=$(curl -sf "${url}/node/50?_format=json" 2>/dev/null) || true
+            if [[ -n "$response" ]]; then
+              nid=$(echo "$response" | jq -re '.nid[0].value' 2>/dev/null) || true
+              if [[ -n "$nid" ]]; then
+                echo "Health check passed (nid=${nid})"
+                exit 0
+              else
+                echo "Attempt ${i}/30: unexpected response: ${response:0:200}"
+              fi
+            else
+              echo "Attempt ${i}/30: no response yet"
+            fi
+            sleep 30
+          done
+          echo "Health check failed after 15 minutes"
+          exit 1
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          reserved_ip="${{ vars.RESERVED_IP_ADDRESS }}"
+          echo "${{ secrets.PACKER_SSH_KEY }}" > /tmp/ssh_key
+          chmod 600 /tmp/ssh_key
+          ssh -o StrictHostKeyChecking=no -i /tmp/ssh_key "core@${reserved_ip}" \
+            "sudo journalctl -u setup-sandbox.service --no-pager -n 100; \
+             sudo journalctl -u sandbox.service --no-pager -n 50"
+          rm -f /tmp/ssh_key

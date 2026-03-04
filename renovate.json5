@@ -1,0 +1,21 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'github>islandora-devops/.github:renovate.json5',
+  ],
+  customManagers: [
+    {
+      customType: 'regex',
+      description: 'Update isle-buildkit tag',
+      managerFilePatterns: [
+        '/^\\.env$/',
+      ],
+      matchStrings: [
+        'ISLANDORA_TAG=(?<currentValue>[\\d\\.]+)',
+      ],
+      datasourceTemplate: 'github-releases',
+      packageNameTemplate: 'Islandora-Devops/isle-buildkit',
+      versioningTemplate: 'semver',
+    },
+  ],
+}

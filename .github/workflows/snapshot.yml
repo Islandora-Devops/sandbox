@@ -1,11 +1,13 @@
 name: Create Fedora CoreOS snapshot
 
 on:
+  schedule:
+    - cron: '0 0 1 * *'  # Monthly on the 1st
   workflow_dispatch:
     inputs:
       url:
-        description: 'Fedora CoreOS image URL for Digital Ocean'
-        required: true
+        description: 'Fedora CoreOS DigitalOcean image URL (leave blank to auto-detect latest stable)'
+        required: false
         type: string
 
 concurrency:
@@ -15,33 +17,42 @@ concurrency:
 jobs:
   snapshot:
     name: Create CoreOS snapshot
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Set up doctl
-        uses: digitalocean/action-doctl@v2
+        uses: digitalocean/action-doctl@135ac0aa0eed4437d547c6f12c364d3006b42824 # v2
         with:
           token: ${{ secrets.DIGITALOCEAN_API_TOKEN }}
-      - name: Get snapshot ID
-        id: get_snapshot
+
+      - name: Resolve image URL
+        id: resolve_url
         run: |
-           url="${{ inputs.url }}"
-           snapshot_name="${url##*/}"
-           snapshot_id=$(doctl compute snapshot list --format ID,Name --no-header | grep " $snapshot_name\$" | awk '{print $1}')
-           echo "snapshot_id=$snapshot_id" >> $GITHUB_OUTPUT
-      - name: Check if Snapshot Exists
+          url="${{ inputs.url }}"
+          if [[ -z "$url" ]]; then
+            echo "No URL provided, fetching latest stable Fedora CoreOS for DigitalOcean..."
+            url=$(curl -sf "https://builds.coreos.fedoraproject.org/streams/stable.json" | \
+              jq -r '.architectures.x86_64.artifacts.digitalocean.formats["qcow2.gz"].disk.location')
+            echo "Resolved URL: $url"
+          fi
+          echo "url=$url" >> $GITHUB_OUTPUT
+          echo "snapshot_name=${url##*/}" >> $GITHUB_OUTPUT
+
+      - name: Check if snapshot already exists
         id: check_snapshot
         run: |
-          snapshot_id="${{ steps.get_snapshot.outputs.snapshot_id }}"
-          if doctl compute snapshot get $snapshot_id > /dev/null 2>&1; then
+          snapshot_name="${{ steps.resolve_url.outputs.snapshot_name }}"
+          snapshot_id=$(doctl compute image list-user --format ID,Name --no-header | grep " $snapshot_name\$" | awk '{print $1}')
+          if [[ -n "$snapshot_id" ]]; then
             echo "snapshot_exists=true" >> $GITHUB_OUTPUT
           else
             echo "snapshot_exists=false" >> $GITHUB_OUTPUT
           fi
-      - name: Create Snapshot
+
+      - name: Create snapshot
         if: ${{ steps.check_snapshot.outputs.snapshot_exists == 'false' }}
         run: |
-          url="${{ inputs.url }}"
-          snapshot_name="${url##*/}"
+          url="${{ steps.resolve_url.outputs.url }}"
+          snapshot_name="${{ steps.resolve_url.outputs.snapshot_name }}"
           doctl compute image create "${snapshot_name}" \
             --verbose \
             --region TOR1 \
@@ -49,3 +60,13 @@ jobs:
             --image-description "Base image for Islandora Sandbox. Does not include docker images." \
             --tag-names coreos \
             --image-url "${url}"
+
+      - name: Prune old CoreOS snapshots
+        run: |
+          response=$(curl -sf "https://api.digitalocean.com/v2/images?type=user&tag_name=coreos&per_page=100" \
+            -H "Authorization: Bearer ${{ secrets.DIGITALOCEAN_API_TOKEN }}")
+          old_ids=$(echo "$response" | jq -r '.images | sort_by(.created_at) | reverse | .[1:] | .[].id')
+          for id in $old_ids; do
+            echo "Deleting old CoreOS image: $id"
+            doctl compute image delete "$id" --force
+          done
