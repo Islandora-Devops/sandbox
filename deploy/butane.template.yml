@@ -13,6 +13,23 @@ passwd:
         - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHZds7DX1z9IN0T7H/yXZrUIlOHiPzqK9oWN8brKh06e jjc223@Mac
 systemd:
   units:
+    - name: install-buildx.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Install Docker Buildx
+        Requires=docker.service
+        After=docker.service
+
+        [Service]
+        User=root
+        Group=root
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/usr/bin/sh -ec "mkdir -p /usr/local/lib/docker/cli-plugins && curl -L https://github.com/docker/buildx/releases/download/v0.32.0/buildx-v0.32.0.linux-amd64 -o /usr/local/lib/docker/cli-plugins/docker-buildx && chmod a+x /usr/local/lib/docker/cli-plugins/docker-buildx"
+
+        [Install]
+        WantedBy=multi-user.target
     - name: install-docker-compose.service
       enabled: true
       contents: |
@@ -75,8 +92,8 @@ systemd:
       contents: |
         [Unit]
         Description=Clone and initialise isle-site-template
-        Requires=docker.service install-docker-compose.service install-make.service
-        After=docker.service install-docker-compose.service install-make.service
+        Requires=docker.service install-buildx.service install-docker-compose.service install-make.service
+        After=docker.service install-buildx.service install-docker-compose.service install-make.service
         ConditionPathExists=!/opt/sandbox/isle-site-template
 
         [Service]
@@ -85,6 +102,7 @@ systemd:
         Type=oneshot
         RemainAfterExit=true
         Environment=TERM=xterm
+        EnvironmentFile=/opt/sandbox/.env
         ExecStart=/usr/bin/bash /opt/sandbox/setup.sh
 
         [Install]

@@ -49,6 +49,12 @@ jobs:
             fi
           done < .env > ./deploy/sandbox.env
 
+          # Append GitHub Actions overrides not sourced from .env
+          for var in DOMAIN TAG; do
+            sed -i "/^${var}=/d" ./deploy/sandbox.env
+            echo "${var}=${!var}" >> ./deploy/sandbox.env
+          done
+
           envsubst < ./deploy/butane.template.yml > ./deploy/butane.yml
       - name: Build Ignition Config
         id: build_ignition
