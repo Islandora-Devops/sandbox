@@ -124,7 +124,7 @@ systemd:
         Group=core
         WorkingDirectory=/opt/sandbox/isle-site-template
         ExecStartPre=/usr/bin/docker compose down -v
-        ExecStart=/usr/bin/docker compose up
+        ExecStart=/usr/bin/make demo-objects
         ExecStop=/usr/bin/docker compose down -v
 
         [Install]
@@ -145,6 +145,12 @@ storage:
         name: core
     - path: /opt/sandbox/.secrets
       mode: 0700
+      user:
+        name: core
+      group:
+        name: core
+    - path: /opt/sandbox/acme
+      mode: 0755
       user:
         name: core
       group:
@@ -193,6 +199,14 @@ storage:
         name: core
       contents:
         local: setup.sh
+    - path: /opt/sandbox/docker-compose.override.yml
+      mode: 0644
+      user:
+        name: core
+      group:
+        name: core
+      contents:
+        local: docker-compose.override.yml
     - path: /opt/sandbox/.env
       mode: 0644
       user:

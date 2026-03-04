@@ -152,7 +152,7 @@ jobs:
 
           echo "Waiting for ${url} to become available..."
           for i in $(seq 1 30); do
-            response=$(curl -sf "${url}/node/1?_format=json" 2>/dev/null) || true
+            response=$(curl -sf "${url}/node/50?_format=json" 2>/dev/null) || true
             if [[ -n "$response" ]]; then
               nid=$(echo "$response" | jq -re '.nid[0].value' 2>/dev/null) || true
               if [[ -n "$nid" ]]; then
