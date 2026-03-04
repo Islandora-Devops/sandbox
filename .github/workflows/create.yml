@@ -27,21 +27,29 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-      - name: Load defaults form .env file
+      - name: Generate config files
         run: |
-          echo "Loading environment variables from .env file..."
           set -o allexport
           source .env
           set +o allexport
 
-          echo "Override with environment variables from Github..."
           export DIGITALOCEAN_API_TOKEN="${{ secrets.DIGITALOCEAN_API_TOKEN }}"
           export ISLE_PASSWORD="${{ secrets.ISLE_PASSWORD }}"
           export DOMAIN="${{ vars.DOMAIN }}"
-          export TAG="${{ github.ref_name }}"
+          export TAG="sandbox"
+
+          # Build sandbox.env by resolving each key in .env against the current
+          # environment, so GitHub Actions values override the local defaults.
+          while IFS= read -r line; do
+            if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)= ]]; then
+              key="${BASH_REMATCH[1]}"
+              echo "$key=${!key}"
+            else
+              echo "$line"
+            fi
+          done < .env > ./deploy/sandbox.env
 
           envsubst < ./deploy/butane.template.yml > ./deploy/butane.yml
-          cat ./deploy/butane.yml
       - name: Build Ignition Config
         id: build_ignition
         run: |

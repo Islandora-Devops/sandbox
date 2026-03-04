@@ -181,10 +181,4 @@ storage:
       group:
         name: core
       contents:
-        inline: |
-          DIGITALOCEAN_API_TOKEN=${DIGITALOCEAN_API_TOKEN}
-          DOMAIN=${DOMAIN}
-          ISLANDORA_REPOSITORY=${ISLANDORA_REPOSITORY}
-          ISLANDORA_TAG=${ISLANDORA_TAG}
-          REPOSITORY=${REPOSITORY}
-          TAG=${TAG}
+        local: sandbox.env
