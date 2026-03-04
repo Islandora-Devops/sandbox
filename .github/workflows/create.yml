@@ -66,8 +66,13 @@ jobs:
       - name: Get image ID
         id: get_image
         run: |
-          image_name="${{ vars.IMAGE_NAME }}"
-          image_id=$(doctl compute image list --format ID,Name --no-header | grep " $image_name\$" | awk '{print $1}')
+          image_id=$(curl -sf "https://api.digitalocean.com/v2/images?type=user&tag_name=coreos&per_page=100" \
+            -H "Authorization: Bearer ${{ secrets.DIGITALOCEAN_API_TOKEN }}" | \
+            jq -r '.images | sort_by(.created_at) | reverse | .[0].id')
+          if [[ -z "$image_id" || "$image_id" == "null" ]]; then
+            echo "No coreos-tagged image found. Run the snapshot workflow first."
+            exit 1
+          fi
           echo "image_id=$image_id" >> $GITHUB_OUTPUT
       - name: Get ssh key ID
         id: get_ssh_key
@@ -81,32 +86,36 @@ jobs:
           volume_name="${{ vars.VOLUME_NAME }}"
           volume_id=$(doctl compute volume list --format ID,Name --no-header | grep " $volume_name\$" | awk '{print $1}')
           echo "volume_id=$volume_id" >> $GITHUB_OUTPUT
-      - name: Resolve droplet size
-        id: resolve_size
+      - name: Resolve region and size
+        id: resolve
         run: |
-          region="${{ vars.REGION }}"
-          available=$(doctl compute size list --format Slug,Regions --no-header | \
-            awk -v r="$region" '$2 ~ r {print $1}')
-          for size in ${{ vars.SIZE }}; do
-            if echo "$available" | grep -qx "$size"; then
-              echo "size=$size" >> $GITHUB_OUTPUT
-              echo "Selected size: $size"
-              exit 0
-            fi
+          size_data=$(doctl compute size list --format Slug,Regions --no-header)
+          for region in ${{ vars.REGION }}; do
+            available=$(echo "$size_data" | awk -v r="$region" '$2 ~ r {print $1}')
+            for size in ${{ vars.SIZE }}; do
+              if echo "$available" | grep -qx "$size"; then
+                echo "size=$size" >> $GITHUB_OUTPUT
+                echo "region=$region" >> $GITHUB_OUTPUT
+                echo "Selected: $size in $region"
+                exit 0
+              fi
+            done
           done
-          echo "None of the preferred sizes (${{ vars.SIZE }}) are available in $region"
+          echo "No combination of sizes (${{ vars.SIZE }}) and regions (${{ vars.REGION }}) is available"
           exit 1
       - name: Create droplet
         id: create_droplet
         run: |
           name="${{ inputs.environment }}"
-          size="${{ steps.resolve_size.outputs.size }}"
-          region="${{ vars.REGION }}"
+          size="${{ steps.resolve.outputs.size }}"
+          region="${{ steps.resolve.outputs.region }}"
           image_id="${{ steps.get_image.outputs.image_id }}"
           ssh_key_id="${{ steps.get_ssh_key.outputs.ssh_key_id }}"
           volume_id="${{ steps.get_volume.outputs.volume_id }}"
           data_file="${{ steps.build_ignition.outputs.file }}"
-          droplet_id=$(doctl compute droplet create "${name}" --size "${size}" --region "${region}" --image "${image_id}" --ssh-keys "${ssh_key_id}" --volumes "${volume_id}" --user-data-file "${data_file}" --format ID --no-header --wait)
+          volume_flag=()
+          [[ -n "$volume_id" ]] && volume_flag=(--volumes "$volume_id")
+          droplet_id=$(doctl compute droplet create "${name}" --size "${size}" --region "${region}" --image "${image_id}" --ssh-keys "${ssh_key_id}" "${volume_flag[@]}" --user-data-file "${data_file}" --format ID --no-header --wait)
           echo "droplet_id=${droplet_id}" >> $GITHUB_OUTPUT
       - name: Bind Reserved IP address to droplet
         run: |
