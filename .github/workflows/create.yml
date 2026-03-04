@@ -39,7 +39,6 @@ jobs:
           export ISLE_PASSWORD="${{ secrets.ISLE_PASSWORD }}"
           export DOMAIN="${{ vars.DOMAIN }}"
           export TAG="${{ github.ref_name }}"
-          export VOLUME_NAME="${{ vars.VOLUME_NAME }}"
 
           envsubst < ./deploy/butane.template.yml > ./deploy/butane.yml
           cat ./deploy/butane.yml
@@ -59,9 +58,16 @@ jobs:
           droplet_id=$(doctl compute droplet list --format ID,Name --no-header | grep " ${name}\$" | awk '{print $1}')
           echo "droplet_id=$droplet_id" >> $GITHUB_OUTPUT
       - name: Destroy pre-existing droplet
-        if : ${{ steps.get_droplet.outputs.droplet_id != '' }}
+        if: ${{ steps.get_droplet.outputs.droplet_id != '' }}
         run: |
           droplet_id="${{ steps.get_droplet.outputs.droplet_id }}"
+          vol_ids=$(curl -sf "https://api.digitalocean.com/v2/droplets/${droplet_id}" \
+            -H "Authorization: Bearer ${{ secrets.DIGITALOCEAN_API_TOKEN }}" | \
+            jq -r '.droplet.volume_ids[]' 2>/dev/null || true)
+          for vol_id in $vol_ids; do
+            echo "Detaching volume ${vol_id}..."
+            doctl compute volume-action detach "${vol_id}" --droplet-id "${droplet_id}" --wait
+          done
           doctl compute droplet delete "$droplet_id" --force
       - name: Get image ID
         id: get_image
@@ -80,12 +86,6 @@ jobs:
           ssh_key_name="${{ vars.SSH_KEY_NAME }}"
           ssh_key_id=$(doctl compute ssh-key list --format ID,Name --no-header | grep " $ssh_key_name\$" | awk '{print $1}')
           echo "ssh_key_id=$ssh_key_id" >> $GITHUB_OUTPUT
-      - name: Get volume ID
-        id: get_volume
-        run: |
-          volume_name="${{ vars.VOLUME_NAME }}"
-          volume_id=$(doctl compute volume list --format ID,Name --no-header | grep " $volume_name\$" | awk '{print $1}')
-          echo "volume_id=$volume_id" >> $GITHUB_OUTPUT
       - name: Resolve region and size
         id: resolve
         run: |
@@ -120,11 +120,8 @@ jobs:
           region="${{ steps.resolve.outputs.region }}"
           image_id="${{ steps.get_image.outputs.image_id }}"
           ssh_key_id="${{ steps.get_ssh_key.outputs.ssh_key_id }}"
-          volume_id="${{ steps.get_volume.outputs.volume_id }}"
           data_file="${{ steps.build_ignition.outputs.file }}"
-          volume_flag=()
-          [[ -n "$volume_id" ]] && volume_flag=(--volumes "$volume_id")
-          droplet_id=$(doctl compute droplet create "${name}" --size "${size}" --region "${region}" --image "${image_id}" --ssh-keys "${ssh_key_id}" "${volume_flag[@]}" --user-data-file "${data_file}" --format ID --no-header --wait)
+          droplet_id=$(doctl compute droplet create "${name}" --size "${size}" --region "${region}" --image "${image_id}" --ssh-keys "${ssh_key_id}" --user-data-file "${data_file}" --format ID --no-header --wait)
           echo "droplet_id=${droplet_id}" >> $GITHUB_OUTPUT
       - name: Bind Reserved IP address to droplet
         run: |

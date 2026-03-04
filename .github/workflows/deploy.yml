@@ -54,4 +54,11 @@ jobs:
         if: ${{ steps.get_droplet.outputs.droplet_id != '' }}
         run: |
           droplet_id="${{ steps.get_droplet.outputs.droplet_id }}"
+          vol_ids=$(curl -sf "https://api.digitalocean.com/v2/droplets/${droplet_id}" \
+            -H "Authorization: Bearer ${{ secrets.DIGITALOCEAN_API_TOKEN }}" | \
+            jq -r '.droplet.volume_ids[]' 2>/dev/null || true)
+          for vol_id in $vol_ids; do
+            echo "Detaching volume ${vol_id}..."
+            doctl compute volume-action detach "${vol_id}" --droplet-id "${droplet_id}" --wait
+          done
           doctl compute droplet delete "$droplet_id" --force
