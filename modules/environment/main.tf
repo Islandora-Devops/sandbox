@@ -40,6 +40,7 @@ resource "digitalocean_droplet" "this" {
   region    = var.region
   size      = var.size
   image     = var.image_id
+  ssh_keys  = var.droplet_ssh_keys
   user_data = var.user_data
 
   lifecycle {

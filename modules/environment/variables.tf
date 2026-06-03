@@ -13,6 +13,11 @@ variable "image_id" {
   description = "DigitalOcean image ID to use for the droplet"
 }
 
+variable "droplet_ssh_keys" {
+  type        = list(string)
+  description = "DigitalOcean SSH key IDs or fingerprints to attach when creating the droplet"
+}
+
 variable "region" {
   type        = string
   description = "DigitalOcean region for the environment resources"

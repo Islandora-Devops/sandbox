@@ -117,10 +117,11 @@ module "environment" {
   for_each = local.environment == null ? {} : { (terraform.workspace) = local.environment }
   source   = "./modules/environment"
 
-  domain       = each.value.domain
-  droplet_name = terraform.workspace
-  image_id     = digitalocean_custom_image.coreos[0].id
-  region       = var.region
-  size         = var.droplet_size
-  user_data    = local.cloud_init
+  domain           = each.value.domain
+  droplet_name     = terraform.workspace
+  droplet_ssh_keys = var.droplet_ssh_keys
+  image_id         = digitalocean_custom_image.coreos[0].id
+  region           = var.region
+  size             = var.droplet_size
+  user_data        = local.cloud_init
 }

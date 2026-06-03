@@ -7,6 +7,12 @@ variable "ssh_keys" {
   ]
 }
 
+variable "droplet_ssh_keys" {
+  type        = list(string)
+  description = "DigitalOcean SSH key IDs or fingerprints to attach when creating droplets"
+  default     = ["34230062"]
+}
+
 variable "isle_password" {
   type        = string
   sensitive   = true
