@@ -75,8 +75,8 @@ deploy-prod: ## Apply and validate sandbox/prod
 cleanup-test: ## Destroy only ephemeral test compute; keep test DNS and reserved IP
 	$(MAKE) tf-test ACTION=cleanup
 
-destroy-test: ## Destroy the entire test workspace, including DNS and reserved IP
-	$(MAKE) tf-test ACTION=destroy
+destroy-test: ## Permanently destroy the entire test workspace, including DNS and reserved IP
+	ALLOW_FULL_TEST_DESTROY=true $(MAKE) tf-test ACTION=destroy
 
 delete-test-workspace: ## Delete the test Terraform workspace
 	ci/delete-workspace.sh test

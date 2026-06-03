@@ -100,6 +100,10 @@ make tf-prod ACTION=apply
 make tf-test ACTION=cleanup
 ```
 
+`make tf-test ACTION=cleanup` is the normal teardown path for test runs. It
+destroys only ephemeral test compute resources and keeps the `test.islandora.ca`
+DNS zone and reserved IP in Terraform state.
+
 Run local checks before opening or updating a PR:
 
 ```bash
@@ -171,8 +175,9 @@ make tf-prod ACTION=apply
 make tf-test ACTION=cleanup
 ```
 
-Use `make destroy-test` only when intentionally removing the entire test
-workspace, including `test.islandora.ca` DNS and the test reserved IP.
+`make tf-test ACTION=destroy` is guarded because it removes the entire test
+workspace, including `test.islandora.ca` DNS and the test reserved IP. Use
+`make destroy-test` only when intentionally removing those shared resources.
 
 ## Nightly Refresh
 

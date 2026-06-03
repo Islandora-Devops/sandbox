@@ -22,6 +22,7 @@ Optional environment:
   TF_VAR_droplet_size            DigitalOcean size slug. Defaults to "s-4vcpu-8gb-amd".
   TF_VAR_region                  DigitalOcean region override. When unset, the script selects an available region.
   TF_OUTPUT_NAME                 GitHub Actions output name for plan output.
+  ALLOW_FULL_TEST_DESTROY        Set to "true" to permit ACTION=destroy for the test workspace.
 EOF
 }
 
@@ -93,6 +94,15 @@ esac
 
 if [[ "$environment" == "prod" && "$action" == "destroy" ]]; then
   echo "destroy is disabled for prod/sandbox" >&2
+  exit 1
+fi
+
+if [[ "$environment" == "test" && "$action" == "destroy" && "${ALLOW_FULL_TEST_DESTROY:-}" != "true" ]]; then
+  cat >&2 <<'EOF'
+ACTION=destroy removes the entire test workspace, including DNS and the reserved IP.
+Use ACTION=cleanup to destroy only ephemeral test compute.
+To intentionally remove the entire test workspace, rerun with ALLOW_FULL_TEST_DESTROY=true.
+EOF
   exit 1
 fi
 
