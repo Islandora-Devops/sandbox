@@ -11,7 +11,7 @@ chmod 600 "$key_file"
 
 echo "=== Logs from ${domain} ==="
 ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i "$key_file" "core@${domain}" \
-  "sudo journalctl -u isle-init.service --no-pager -n 100;
+  "sudo journalctl -u sandbox-bootstrap.service --no-pager -n 100;
    sudo journalctl -u sandbox.service --no-pager -n 50;
    cd /opt/sandbox/isle-site-template;
    docker compose logs --tail 25" || echo "Could not reach ${domain}"
