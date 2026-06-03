@@ -8,5 +8,4 @@ source /opt/sandbox/profile.sh
 
 bash /opt/sandbox/setup.sh
 
-systemctl start sandbox.service
 systemctl start rake.timer
