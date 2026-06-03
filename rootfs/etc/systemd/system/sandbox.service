@@ -1,0 +1,17 @@
+[Unit]
+Description=Islandora Sandbox
+PartOf=docker.service
+After=docker.service
+Requires=isle-init.service
+After=isle-init.service
+
+[Service]
+User=core
+Group=core
+WorkingDirectory=/opt/sandbox/isle-site-template
+ExecStartPre=/usr/bin/docker compose down -v
+ExecStart=/usr/bin/make demo-objects
+ExecStop=/usr/bin/docker compose down -v
+
+[Install]
+WantedBy=multi-user.target

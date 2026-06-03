@@ -1,119 +1,285 @@
 # Islandora Sandbox <!-- omit in toc -->
 
 [![LICENSE](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](./LICENSE)
-[![Deploy](https://github.com/Islandora-Devops/sandbox/actions/workflows/deploy.yml/badge.svg)](https://github.com/Islandora-Devops/sandbox/actions/workflows/deploy.yml)
 
 ## Table of Contents <!-- omit in toc -->
 - [Introduction](#introduction)
 - [Requirements](#requirements)
-- [GitHub Actions](#github-actions)
-  - [Deployment Flow](#deployment-flow)
-  - [Workflows](#workflows)
-  - [Deployment Environments](#deployment-environments)
-  - [Environment Variables](#environment-variables)
-  - [Secrets](#secrets)
-  - [Domains](#domains)
+- [Remote State](#remote-state)
+- [Provisioning](#provisioning)
+- [CI/CD Workflow](#cicd-workflow)
+- [Local Debugging](#local-debugging)
+- [Nightly Refresh](#nightly-refresh)
+- [Domains](#domains)
 
 ## Introduction
 
-This repository deploys the [Islandora Sandbox] on [Digital Ocean] using
-[Fedora CoreOS] and [isle-site-template]. It serves as a reference example of
-how to deploy Islandora on DigitalOcean using GitHub Actions.
+This repository is an example of how to deploy ISLE to a cloud provider using
+infrastructure as code. In this implementation, the target cloud provider is
+[DigitalOcean], Terraform manages the cloud resources, [Fedora CoreOS] runs the
+host, and [isle-site-template] provides the Islandora application stack.
 
-It is **not** intended as a starting point for new users or those unfamiliar
-with Docker and basic server administration.
+The same pattern can be adapted to other providers: define the cloud primitives
+in Terraform, bootstrap the VM with the ISLE site template, validate expected
+Islandora content after deployment, and promote only after the test deployment
+passes.
 
-If you are looking to use Islandora, please read the [official documentation]
-and use [isle-site-template] to deploy via Docker, or the
-[islandora-playbook] to deploy via Ansible.
+For the live Islandora sandbox, provisioned VMs clone
+`https://github.com/Islandora-Devops/isle-site-template` from the `main` branch
+by default. The Terraform root is workspace-driven:
+
+- `test` manages the review environment at `test.islandora.ca`
+- `sandbox` manages the long-lived environment at `sandbox.islandora.ca`
+
+The shared parent `islandora.ca` zone remains managed from the `sandbox`
+workspace so there is only one writer for the shared DNS records.
 
 ## Requirements
 
-- A [Digital Ocean] account with a reserved IP address per environment
-- A Fedora CoreOS snapshot created via [snapshot.yml] (see below)
-- GitHub repository secrets and variables configured (see [Secrets] and [Environment Variables])
+- A [DigitalOcean] account
+- A Spaces bucket for Terraform state
+- A Spaces access key and secret key
+- Terraform 1.11+
+- `jq`
+- Chrome or Chromium if you want to capture review screenshots locally
 
-## GitHub Actions
+## Remote State
 
-### Deployment Flow
+This repository follows DigitalOcean's guide, [How to Use DigitalOcean Spaces as a Terraform Remote State Backend](https://docs.digitalocean.com/products/spaces/reference/terraform-backend/).
 
-| Event | Test (test.islandora.ca) | Sandbox (sandbox.islandora.ca) |
-| :---- | :----------------------- | :----------------------------- |
-| PR opened / commit pushed to PR | Deployed, health checked, then **destroyed** | — |
-| Merged to `main` | — | Deployed |
+Important details from that guide that this repository follows:
 
-On each PR event a fresh droplet is created, [isle-site-template] is cloned and
-initialised, a health check polls `/node/1?_format=json` for up to 15 minutes,
-and the droplet is **always destroyed afterward** — whether the check passed or
-failed — to avoid unnecessary billing.
+- The Spaces bucket must exist before `terraform init` uses the remote backend.
+- The bucket is declared in the no-backend [bootstrap](./bootstrap) Terraform root and can be created locally with `make bootstrap-state`.
+- The backend uses the `s3` backend type with the DigitalOcean Spaces endpoint.
+- Credentials are passed with `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, not Terraform variables.
+- `use_lockfile = true` is enabled for state locking.
+- AWS-specific checks are disabled with the documented `skip_*` flags and `region = "us-east-1"`.
 
-### Workflows
+The backend configuration in [main.tf](./main.tf) is:
 
-| Workflow | Trigger | Description |
-| :------- | :------ | :---------- |
-| [deploy.yml] | PR opened/updated, push to `main` | Deploys to test on PRs (destroyed after health check); deploys to sandbox on merge to `main`. |
-| [snapshot.yml] | Monthly (1st) or manually | Imports the latest stable Fedora CoreOS DigitalOcean image into your account and prunes old `coreos`-tagged snapshots. |
-| [create.yml] | Called by [deploy.yml] | Creates a DigitalOcean droplet, clones [isle-site-template], runs `make init build demo-objects`, health checks the site, and assigns the reserved IP. Destroys any pre-existing droplet with the same name first. |
+```hcl
+backend "s3" {
+  endpoints = {
+    s3 = "https://tor1.digitaloceanspaces.com"
+  }
 
-### Deployment Environments
+  bucket = "sandbox-terraform-state"
+  key    = "terraform.tfstate"
 
-Two [deployment environments] are defined in the [environment settings] of the
-GitHub repository:
+  skip_credentials_validation = true
+  skip_requesting_account_id  = true
+  skip_metadata_api_check     = true
+  skip_region_validation      = true
+  skip_s3_checksum            = true
+  region                      = "us-east-1"
+  use_lockfile                = true
+}
+```
 
-- `test` — ephemeral, destroyed after each health check
-- `sandbox` — long-lived, deployed on every merge to `main`
+## Provisioning
 
-### Environment Variables
+Provisioning is intentionally script-driven so local runs and GitHub Actions use
+exactly the same entry points:
 
-Each environment has the following variables:
+- [Makefile](./Makefile) provides the public commands.
+- [ci/deploy-local.sh](./ci/deploy-local.sh) is the shared Terraform runner used by local operators and GitHub Actions.
+- [ci/select-region.sh](./ci/select-region.sh) chooses the first candidate DigitalOcean region where the requested droplet size is currently available.
+- [ci/screenshot.sh](./ci/screenshot.sh) captures the review screenshot.
+- [ci/fetch-json.sh](./ci/fetch-json.sh) fetches and pretty-prints the JSON-LD check used in the PR comment.
+- [ci/health-check.sh](./ci/health-check.sh) and [ci/check-nodes.sh](./ci/check-nodes.sh) validate that the expected Drupal nodes exist before a deployment is considered healthy.
+- [main.tf](./main.tf) manages the Fedora CoreOS image as a `digitalocean_custom_image` with `create_before_destroy = true`, so image replacement happens safely under Terraform control.
 
-| Variable | test | sandbox |
-| :------- | :--- | :------ |
-| `DOMAIN` | `test.islandora.ca` | `sandbox.islandora.ca` |
-| `RESERVED_IP_ADDRESS` | `174.138.112.33` | `159.203.49.92` |
+The main local provisioning commands are:
 
-The following variables are shared across both environments:
+```bash
+make tf-test ACTION=plan
+make tf-test ACTION=apply
+make tf-prod ACTION=plan
+make tf-prod ACTION=apply
+make tf-test ACTION=destroy
+```
 
-| Variable | Example | Description |
-| :------- | :------ | :---------- |
-| `REGION` | `tor1 nyc1 nyc3` | Space-separated list of DigitalOcean regions in preference order. The first region with an available size is used. |
-| `SIZE` | `s-4vcpu-8gb-amd s-4vcpu-8gb-intel s-4vcpu-8gb` | Space-separated list of droplet sizes in preference order. Tried in order within each region until one is available. |
-| `SSH_KEY_NAME` | `default` | Name of the SSH key in your DigitalOcean account deployed to the droplet. |
+Run local checks before opening or updating a PR:
 
-The snapshot image is selected automatically by querying for the most recently
-created DigitalOcean image tagged `coreos`. Run [snapshot.yml] to create or
-refresh it.
+```bash
+make lint
+```
 
-### Secrets
+This checks Terraform formatting, validates the main and bootstrap Terraform
+roots, and runs ShellCheck against all `*.sh` scripts.
 
-| Secret | Description |
-| :----- | :---------- |
-| `DIGITALOCEAN_API_TOKEN` | DigitalOcean API token with read/write access. |
-| `ISLE_PASSWORD` | Password written to the `ACTIVEMQ_WEB_ADMIN_PASSWORD` and `DRUPAL_DEFAULT_ACCOUNT_PASSWORD` secret files consumed by [isle-site-template]. |
+`ACTION` defaults to `plan`, so `make tf-test` and `make tf-prod` are shorthand
+for planning the test and production workspaces. The deploy script initializes
+the remote Spaces backend, selects the Terraform workspace, selects an available
+DigitalOcean region unless `TF_VAR_region` is already set, validates Terraform
+for non-destroy actions, and then runs the requested Terraform action.
+Terraform reads the base environment from [.env](./.env) and writes
+workspace-specific `DOMAIN` and `TAG` values into the VM cloud-init payload.
+During VM bootstrap, [rootfs/opt/sandbox/setup.sh](./rootfs/opt/sandbox/setup.sh)
+clones [isle-site-template], copies the generated `.env` and secrets, then runs
+`make init build demo-objects`.
 
-### Domains
+The default droplet size is `s-4vcpu-8gb-amd`, matching the imported sandbox
+droplet. Override it with `TF_VAR_droplet_size` if DigitalOcean capacity requires
+a different slug.
 
-Domains are registered via [hover] but use [Digital Ocean] nameservers, as
-LetsEncrypt DNS challenges are not supported by [hover]. The `DOMAIN` and
-`RESERVED_IP_ADDRESS` for each environment must match the `A Records` configured
-in [Digital Ocean].
+The site repository and branch can be overridden with Terraform variables, but
+the defaults should normally be used:
 
-TLS certificates are issued via Let's Encrypt HTTP challenge and managed by
-Traefik within the [isle-site-template] stack. Certificates are not persisted
-across deployments.
+```bash
+TF_VAR_repo_url=https://github.com/Islandora-Devops/isle-site-template
+TF_VAR_repo_branch=main
+```
 
-[create.yml]: .github/workflows/create.yml
-[deploy.yml]: .github/workflows/deploy.yml
-[deployment environments]: https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment
-[Digital Ocean]: https://www.digitalocean.com/
-[environment settings]: https://github.com/Islandora-Devops/sandbox/settings/environments
+## CI/CD Workflow
+
+The GitHub workflows also go through the same `make` and `ci/*.sh` paths:
+
+- Pull requests run plans for both workspaces in [terraform-plan.yml](./.github/workflows/terraform-plan.yml), then post or update a sticky PR comment with the `test` and `sandbox` Terraform plans.
+- Pull request pushes do not run Terraform apply.
+- Pushes to `main` run `make tf-test ACTION=apply`, then `make tf-prod ACTION=apply`, then `make tf-test ACTION=destroy`. Production only starts after the test deploy and required-node checks pass.
+
+## Local Debugging
+
+Local debugging follows the same path as CI. GitHub Actions repository secrets
+use the same names as these local environment variables:
+
+```bash
+export AWS_ACCESS_KEY_ID="..."
+export AWS_SECRET_ACCESS_KEY="..."
+export DIGITALOCEAN_TOKEN="..."
+export ISLE_PASSWORD="..."
+
+make tf-test ACTION=apply
+make tf-prod ACTION=apply
+make tf-test ACTION=destroy
+```
+
+Use the `make tf-*` targets for local operator work instead of raw Terraform
+commands. The targets supply the same environment, region selection, validation,
+and health-check behavior used in GitHub Actions.
+
+If you only want a single operation, use the narrower targets:
+
+```bash
+make tf-test ACTION=plan
+make tf-prod ACTION=plan
+make tf-test ACTION=apply
+make tf-prod ACTION=apply
+make tf-test ACTION=destroy
+```
+
+## Nightly Refresh
+
+The sandbox application/data state is refreshed nightly inside the VM by
+systemd. This is not a Terraform droplet recreation.
+
+- [rake.timer](./rootfs/etc/systemd/system/rake.timer) runs every day at
+  `1:00 America/Halifax`.
+- [rake.service](./rootfs/etc/systemd/system/rake.service) restarts
+  `sandbox.service`.
+- [sandbox.service](./rootfs/etc/systemd/system/sandbox.service) runs
+  `docker compose down -v` before startup and shutdown, then runs
+  `make demo-objects`.
+
+The result is a nightly reset of the ISLE demo content and containers while the
+DigitalOcean droplet, reserved IP, DNS records, and Terraform state remain
+managed by Terraform.
+
+## Domains
+
+The delegated `test.islandora.ca` and `sandbox.islandora.ca` zones are managed
+by the shared environment module in [modules/environment/main.tf](./modules/environment/main.tf).
+The parent `islandora.ca` records live in [dns-islandora-ca.tf](./dns-islandora-ca.tf).
+DNS records for these zones should be changed in Terraform and reviewed through
+pull requests, not edited directly in the DigitalOcean UI. If an emergency
+clickops change is made in DigitalOcean, import or reconcile it in Terraform
+before the next apply so Terraform remains the source of truth.
+
+## Bootstrapping
+
+Existing DigitalOcean resources were brought under Terraform management with
+[ci/clickops-import.sh](./ci/clickops-import.sh). The script imports resources into both
+Terraform workspaces:
+
+- `sandbox` imports `sandbox.islandora.ca`, the production reserved IP, the
+  droplet named `sandbox`, sandbox DNS records, shared `islandora.ca` DNS
+  records, the `sandbox-terraform-state` Spaces bucket, and the CoreOS image if
+  one matching the configured name exists.
+- `test` imports `test.islandora.ca`, the test reserved IP, the droplet named
+  `test` if present, test DNS records, and the CoreOS image if one matching the
+  configured name exists.
+
+The shared parent `islandora.ca` zone is imported only in the `sandbox`
+workspace because that workspace is the only Terraform writer for shared DNS.
+
+Before importing, create GitHub Actions repository secrets with the same names
+used locally:
+
+- `DIGITALOCEAN_TOKEN`
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `ISLE_PASSWORD`
+
+For local bootstrapping, export the same values and create the remote state
+bucket with the no-backend bootstrap root:
+
+```bash
+export DIGITALOCEAN_TOKEN="..."
+export AWS_ACCESS_KEY_ID="..."
+export AWS_SECRET_ACCESS_KEY="..."
+
+doctl auth init
+doctl account get
+
+make bootstrap-state
+terraform init -reconfigure
+```
+
+`make bootstrap-state` runs Terraform from the no-backend
+[bootstrap](./bootstrap) Terraform root and creates only the
+`sandbox-terraform-state` Spaces bucket, because the main remote backend bucket
+cannot be used until it exists. After this step, initialize the main Terraform
+root with `terraform init -reconfigure`.
+
+After the backend is initialized, run the import script so existing resources
+are written to remote state:
+
+```bash
+terraform init -upgrade
+./ci/clickops-import.sh
+```
+
+`ci/clickops-import.sh` skips resources already present in state, so it is safe
+for the state bucket to have been created by `make bootstrap-state` before the
+import.
+
+The script defaults to the existing reserved IPs:
+
+```bash
+SANDBOX_RESERVED_IP=159.203.49.92
+TEST_RESERVED_IP=174.138.112.33
+```
+
+Override them when running the import if DigitalOcean has different addresses:
+
+```bash
+SANDBOX_RESERVED_IP="..." TEST_RESERVED_IP="..." ./ci/clickops-import.sh
+```
+
+After importing, verify drift in both workspaces before applying:
+
+```bash
+terraform workspace select sandbox
+terraform state list
+terraform plan
+
+terraform workspace select test
+terraform state list
+terraform plan
+```
+
+[DigitalOcean]: https://www.digitalocean.com/
 [Fedora CoreOS]: https://fedoraproject.org/coreos/
-[Github Actions]: https://docs.github.com/en/actions/quickstart
-[hover]: https://www.hover.com/
-[Islandora Sandbox]: https://sandbox.islandora.ca/
-[islandora-playbook]: https://github.com/Islandora-Devops/islandora-playbook
 [isle-site-template]: https://github.com/Islandora-Devops/isle-site-template
-[official documentation]: https://islandora.github.io/documentation/
-[reusable workflows]: https://docs.github.com/en/actions/using-workflows/reusing-workflows
-[Secrets]: #secrets
-[snapshot.yml]: .github/workflows/snapshot.yml

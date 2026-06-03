@@ -1,0 +1,55 @@
+#cloud-config
+
+users:
+- name: core
+  groups: [docker]
+  shell: /bin/bash
+  sudo: ALL=(ALL) NOPASSWD:ALL
+  ssh_authorized_keys:
+%{ for key in SSH_KEYS ~}
+  - ${key}
+%{ endfor ~}
+
+write_files:
+%{ for path, entry in ROOTFS_FILES ~}
+- path: /${path}
+  permissions: '${entry.mode}'
+%{ if startswith(path, "opt/sandbox/") ~}
+  owner: 'core:core'
+%{ endif ~}
+  encoding: b64
+  content: ${entry.content_b64}
+%{ endfor ~}
+- path: /opt/sandbox/.secrets/ACTIVEMQ_WEB_ADMIN_PASSWORD
+  permissions: '0600'
+  owner: 'core:core'
+  encoding: b64
+  content: ${ISLE_PASSWORD_B64}
+- path: /opt/sandbox/.secrets/DRUPAL_DEFAULT_ACCOUNT_PASSWORD
+  permissions: '0600'
+  owner: 'core:core'
+  encoding: b64
+  content: ${ISLE_PASSWORD_B64}
+- path: /opt/sandbox/.env
+  permissions: '0644'
+  owner: 'core:core'
+  encoding: b64
+  content: ${SANDBOX_ENV_B64}
+- path: /opt/sandbox/.repo-url
+  permissions: '0644'
+  owner: 'core:core'
+  encoding: b64
+  content: ${REPO_URL_B64}
+- path: /opt/sandbox/.repo-branch
+  permissions: '0644'
+  owner: 'core:core'
+  encoding: b64
+  content: ${REPO_BRANCH_B64}
+
+runcmd:
+- mkdir -p /usr/local/lib/docker/cli-plugins /opt/sandbox /opt/sandbox/.secrets /opt/sandbox/acme
+- chown -R core:core /opt/sandbox
+- chmod 700 /opt/sandbox/.secrets
+- systemctl daemon-reload
+- systemctl enable sandbox.service rake.timer
+- bash /opt/sandbox/run.sh > /opt/sandbox/run.log 2>&1

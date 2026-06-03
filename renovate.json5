@@ -17,5 +17,18 @@
       packageNameTemplate: 'Islandora-Devops/isle-buildkit',
       versioningTemplate: 'semver',
     },
+    {
+      customType: 'regex',
+      description: 'Update Fedora CoreOS version',
+      managerFilePatterns: [
+        '/terraform/main\\.tf/',
+      ],
+      matchStrings: [
+        'coreos_version = "(?<currentValue>[\\d\\.]+)"',
+      ],
+      datasourceTemplate: 'github-releases',
+      packageNameTemplate: 'coreos/fedora-coreos-config',
+      versioningTemplate: 'loose',
+    },
   ],
 }

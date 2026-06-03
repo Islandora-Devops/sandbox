@@ -23,6 +23,6 @@ services:
       --certificatesresolvers.letsencrypt.acme.email=community@islandora.ca
       --certificatesresolvers.letsencrypt.acme.caserver=https://acme-v02.api.letsencrypt.org/directory
     volumes:
-    # the sandbox gets rebuilt every night
-    # so persist ACME certs outside the docker volume
+      # the sandbox gets rebuilt every night
+      # so persist ACME certs outside the docker volumes that get only have a 1d lifecycle
       - /opt/sandbox/acme:/acme:rw
