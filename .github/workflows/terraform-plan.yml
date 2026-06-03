@@ -32,14 +32,12 @@ jobs:
       - name: Terraform Plan test
         id: plan_test
         run: make tf-test ACTION=plan TF_OUTPUT_NAME=test_plan
-        continue-on-error: true
         env:
           ISLE_PASSWORD: ${{ secrets.ISLE_PASSWORD }}
 
       - name: Terraform Plan sandbox
         id: plan_sandbox
         run: make tf-prod ACTION=plan TF_OUTPUT_NAME=sandbox_plan
-        continue-on-error: true
         env:
           ISLE_PASSWORD: ${{ secrets.ISLE_PASSWORD }}
 
