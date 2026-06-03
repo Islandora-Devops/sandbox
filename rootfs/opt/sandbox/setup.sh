@@ -48,7 +48,15 @@ cp /opt/sandbox/.secrets/ACTIVEMQ_WEB_ADMIN_PASSWORD ./secrets/ACTIVEMQ_WEB_ADMI
 cp /opt/sandbox/.secrets/DRUPAL_DEFAULT_ACCOUNT_PASSWORD ./secrets/DRUPAL_DEFAULT_ACCOUNT_PASSWORD
 chown -R core:core /opt/sandbox/isle-site-template
 
+sed -i '/^# sandbox local loopback start$/,/^# sandbox local loopback end$/d' /etc/hosts
+{
+  echo "# sandbox local loopback start"
+  printf '127.0.0.1 %s activemq.%s blazegraph.%s fcrepo.%s solr.%s\n' \
+    "$DOMAIN" "$DOMAIN" "$DOMAIN" "$DOMAIN" "$DOMAIN"
+  echo "# sandbox local loopback end"
+} >> /etc/hosts
+
 CORE_HOME="$(getent passwd core | cut -d: -f6)"
-runuser -u core -- env HOME="$CORE_HOME" TERM=xterm bash -lc 'cd /opt/sandbox/isle-site-template && make init build demo-objects'
+runuser -u core -- env GITHUB_ACTIONS=true HOME="$CORE_HOME" TERM=xterm bash -lc 'cd /opt/sandbox/isle-site-template && make init build demo-objects'
 
 popd
