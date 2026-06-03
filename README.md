@@ -97,7 +97,7 @@ make tf-test ACTION=plan
 make tf-test ACTION=apply
 make tf-prod ACTION=plan
 make tf-prod ACTION=apply
-make tf-test ACTION=destroy
+make tf-test ACTION=cleanup
 ```
 
 Run local checks before opening or updating a PR:
@@ -138,7 +138,8 @@ The GitHub workflows also go through the same `make` and `ci/*.sh` paths:
 
 - Pull requests run plans for both workspaces in [terraform-plan.yml](./.github/workflows/terraform-plan.yml), then post or update a sticky PR comment with the `test` and `sandbox` Terraform plans.
 - Pull request pushes do not run Terraform apply.
-- Pushes to `main` run `make tf-test ACTION=apply`, then `make tf-prod ACTION=apply`, then `make tf-test ACTION=destroy`. Production only starts after the test deploy and required-node checks pass.
+- Pushes to `main` run `make tf-test ACTION=apply`, then `make tf-prod ACTION=apply`, then `make tf-test ACTION=cleanup`. Production only starts after the test deploy and required-node checks pass.
+- Test cleanup destroys only ephemeral test compute resources: the test droplet, reserved IP assignment, CoreOS image, and workspace guard. The `test.islandora.ca` DNS zone and reserved IP remain managed in Terraform state.
 
 ## Local Debugging
 
@@ -153,7 +154,7 @@ export ISLE_PASSWORD="..."
 
 make tf-test ACTION=apply
 make tf-prod ACTION=apply
-make tf-test ACTION=destroy
+make tf-test ACTION=cleanup
 ```
 
 Use the `make tf-*` targets for local operator work instead of raw Terraform
@@ -167,8 +168,11 @@ make tf-test ACTION=plan
 make tf-prod ACTION=plan
 make tf-test ACTION=apply
 make tf-prod ACTION=apply
-make tf-test ACTION=destroy
+make tf-test ACTION=cleanup
 ```
+
+Use `make destroy-test` only when intentionally removing the entire test
+workspace, including `test.islandora.ca` DNS and the test reserved IP.
 
 ## Nightly Refresh
 

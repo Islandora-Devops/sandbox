@@ -6,7 +6,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 usage() {
   cat <<'EOF'
 Usage:
-  ci/deploy-local.sh test <plan|apply|destroy>
+  ci/deploy-local.sh test <plan|apply|cleanup|destroy>
   ci/deploy-local.sh prod <plan|apply|destroy>
 
 Required environment:
@@ -83,7 +83,7 @@ case "$environment" in
 esac
 
 case "$action" in
-  plan|apply|destroy) ;;
+  plan|apply|destroy|cleanup) ;;
   *)
     echo "Unknown action: ${action}" >&2
     usage
@@ -107,7 +107,7 @@ require_env AWS_SECRET_ACCESS_KEY
 export SPACES_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID"
 export SPACES_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"
 
-if [[ "$action" != "destroy" ]]; then
+if [[ "$action" != "destroy" && "$action" != "cleanup" ]]; then
   require_env ISLE_PASSWORD
   export TF_VAR_isle_password="${TF_VAR_isle_password:-$ISLE_PASSWORD}"
 else
@@ -124,7 +124,7 @@ cd "$repo_root"
 terraform init -upgrade
 select_workspace "$workspace"
 
-if [[ "$action" != "destroy" ]]; then
+if [[ "$action" != "destroy" && "$action" != "cleanup" ]]; then
   terraform validate
 fi
 
@@ -150,5 +150,16 @@ case "$action" in
       terraform workspace select default >/dev/null 2>&1
       terraform workspace delete "$workspace"
     fi
+    ;;
+  cleanup)
+    if [[ "$environment" != "test" ]]; then
+      echo "cleanup is only supported for the test environment" >&2
+      exit 1
+    fi
+    terraform destroy -auto-approve \
+      -target='module.environment["test"].digitalocean_reserved_ip_assignment.this' \
+      -target='module.environment["test"].digitalocean_droplet.this' \
+      -target='digitalocean_custom_image.coreos[0]' \
+      -target='terraform_data.workspace_guard'
     ;;
 esac

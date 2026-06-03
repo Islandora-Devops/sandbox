@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .PHONY: help fmt lint init bootstrap-state tf-test tf-prod plan plan-test plan-prod \
         review-pr promote-sandbox deploy-test deploy-prod \
-        destroy-test delete-test-workspace snapshot-test review-json-test \
+        cleanup-test destroy-test delete-test-workspace snapshot-test review-json-test \
         check-nodes-test check-nodes-prod health-check-test health-check-prod \
         dump-logs-test dump-logs-prod
 
@@ -44,7 +44,7 @@ bootstrap-state: ## Create the Terraform state Space with the no-backend bootstr
 	SPACES_ACCESS_KEY_ID="$$AWS_ACCESS_KEY_ID" SPACES_SECRET_ACCESS_KEY="$$AWS_SECRET_ACCESS_KEY" terraform -chdir=bootstrap init -upgrade
 	SPACES_ACCESS_KEY_ID="$$AWS_ACCESS_KEY_ID" SPACES_SECRET_ACCESS_KEY="$$AWS_SECRET_ACCESS_KEY" terraform -chdir=bootstrap apply -auto-approve
 
-tf-test: ## Run Terraform for test. Usage: make tf-test ACTION=plan|apply|destroy
+tf-test: ## Run Terraform for test. Usage: make tf-test ACTION=plan|apply|cleanup|destroy
 	@ci/deploy-local.sh test "$${ACTION:-plan}"
 
 tf-prod: ## Run Terraform for sandbox/prod. Usage: make tf-prod ACTION=plan|apply|destroy
@@ -61,10 +61,10 @@ plan: plan-test plan-prod ## Plan both test and sandbox/prod workspaces
 review-pr: ## Compatibility target: apply and validate test
 	$(MAKE) tf-test ACTION=apply
 
-promote-sandbox: ## Apply test, apply sandbox/prod, then destroy test
+promote-sandbox: ## Apply test, apply sandbox/prod, then clean up test compute
 	$(MAKE) tf-test ACTION=apply
 	$(MAKE) tf-prod ACTION=apply
-	$(MAKE) tf-test ACTION=destroy
+	$(MAKE) tf-test ACTION=cleanup
 
 deploy-test: ## Apply and validate test
 	$(MAKE) tf-test ACTION=apply
@@ -72,7 +72,10 @@ deploy-test: ## Apply and validate test
 deploy-prod: ## Apply and validate sandbox/prod
 	$(MAKE) tf-prod ACTION=apply
 
-destroy-test: ## Destroy test and remove its Terraform workspace
+cleanup-test: ## Destroy only ephemeral test compute; keep test DNS and reserved IP
+	$(MAKE) tf-test ACTION=cleanup
+
+destroy-test: ## Destroy the entire test workspace, including DNS and reserved IP
 	$(MAKE) tf-test ACTION=destroy
 
 delete-test-workspace: ## Delete the test Terraform workspace

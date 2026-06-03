@@ -35,8 +35,8 @@ jobs:
         env:
           ISLE_PASSWORD: ${{ secrets.ISLE_PASSWORD }}
 
-      - name: Destroy test after sandbox promotion
-        run: make tf-test ACTION=destroy
+      - name: Clean up test compute after sandbox promotion
+        run: make tf-test ACTION=cleanup
         env:
           ISLE_PASSWORD: ${{ secrets.ISLE_PASSWORD }}
 

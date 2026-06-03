@@ -3,4 +3,4 @@ set -euo pipefail
 
 ci/deploy-local.sh test apply
 ci/deploy-local.sh prod apply
-ci/deploy-local.sh test destroy
+ci/deploy-local.sh test cleanup
