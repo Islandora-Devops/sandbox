@@ -7,6 +7,7 @@ ConditionPathExists=/opt/sandbox/isle-site-template/Makefile
 [Service]
 User=core
 Group=core
+Environment=TERM=xterm
 WorkingDirectory=/opt/sandbox/isle-site-template
 ExecStartPre=/usr/bin/docker compose down -v
 ExecStart=/usr/bin/make demo-objects
