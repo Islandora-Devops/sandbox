@@ -4,6 +4,7 @@ PartOf=docker.service
 After=docker.service
 Requires=isle-init.service
 After=isle-init.service
+ConditionPathExists=/opt/sandbox/isle-site-template/Makefile
 
 [Service]
 User=core

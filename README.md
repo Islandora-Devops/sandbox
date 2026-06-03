@@ -115,7 +115,7 @@ the remote Spaces backend, selects the Terraform workspace, selects an available
 DigitalOcean region unless `TF_VAR_region` is already set, validates Terraform
 for non-destroy actions, and then runs the requested Terraform action.
 Terraform reads the base environment from [.env](./.env) and writes
-workspace-specific `DOMAIN` and `TAG` values into the VM cloud-init payload.
+workspace-specific `DOMAIN` and `TAG` values into the VM Ignition payload.
 During VM bootstrap, [rootfs/opt/sandbox/setup.sh](./rootfs/opt/sandbox/setup.sh)
 clones [isle-site-template], copies the generated `.env` and secrets, then runs
 `make init build demo-objects`.

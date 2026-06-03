@@ -4,7 +4,9 @@
 # Build outputs.
 build
 .terraform
+.terraform-lint
 terraform.tfstate
 **/.terraform
+**/.terraform-lint
 **/terraform.tfstate
 **/terraform.tfstate.backup

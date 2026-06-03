@@ -55,8 +55,8 @@ locals {
 
   rootfs_files = {
     for f in fileset("${path.module}/rootfs", "**") : f => {
-      content_b64 = base64encode(file("${path.module}/rootfs/${f}"))
-      mode        = endswith(f, ".sh") ? "0755" : "0644"
+      source = "data:text/plain;charset=utf-8;base64,${base64encode(file("${path.module}/rootfs/${f}"))}"
+      mode   = endswith(f, ".sh") ? 493 : 420
     }
   }
 
@@ -76,13 +76,133 @@ locals {
     [""]
   ))
 
-  cloud_init = local.environment == null ? "" : templatefile("${path.module}/templates/cloud-init.yml", {
-    SSH_KEYS          = var.ssh_keys
-    ISLE_PASSWORD_B64 = base64encode(var.isle_password)
-    SANDBOX_ENV_B64   = base64encode(local.environment_contents)
-    REPO_URL_B64      = base64encode(var.repo_url)
-    REPO_BRANCH_B64   = base64encode(var.repo_branch)
-    ROOTFS_FILES      = local.rootfs_files
+  ignition_files = concat(
+    [
+      for path, entry in local.rootfs_files : merge(
+        {
+          path     = "/${path}"
+          mode     = entry.mode
+          contents = { source = entry.source }
+        },
+        startswith(path, "opt/sandbox/") ? {
+          user  = { name = "core" }
+          group = { name = "core" }
+        } : {}
+      )
+    ],
+    [
+      {
+        path     = "/opt/sandbox/.secrets/ACTIVEMQ_WEB_ADMIN_PASSWORD"
+        mode     = 384
+        user     = { name = "core" }
+        group    = { name = "core" }
+        contents = { source = "data:text/plain;charset=utf-8;base64,${base64encode(var.isle_password)}" }
+      },
+      {
+        path     = "/opt/sandbox/.secrets/DRUPAL_DEFAULT_ACCOUNT_PASSWORD"
+        mode     = 384
+        user     = { name = "core" }
+        group    = { name = "core" }
+        contents = { source = "data:text/plain;charset=utf-8;base64,${base64encode(var.isle_password)}" }
+      },
+      {
+        path     = "/opt/sandbox/.env"
+        mode     = 420
+        user     = { name = "core" }
+        group    = { name = "core" }
+        contents = { source = "data:text/plain;charset=utf-8;base64,${base64encode(local.environment_contents)}" }
+      },
+      {
+        path     = "/opt/sandbox/.repo-url"
+        mode     = 420
+        user     = { name = "core" }
+        group    = { name = "core" }
+        contents = { source = "data:text/plain;charset=utf-8;base64,${base64encode(var.repo_url)}" }
+      },
+      {
+        path     = "/opt/sandbox/.repo-branch"
+        mode     = 420
+        user     = { name = "core" }
+        group    = { name = "core" }
+        contents = { source = "data:text/plain;charset=utf-8;base64,${base64encode(var.repo_branch)}" }
+      }
+    ]
+  )
+
+  ignition = local.environment == null ? "" : jsonencode({
+    ignition = {
+      version = "3.4.0"
+    }
+    passwd = {
+      users = [
+        {
+          name              = "core"
+          sshAuthorizedKeys = var.ssh_keys
+        }
+      ]
+    }
+    storage = {
+      directories = [
+        {
+          path = "/usr/local/lib/docker/cli-plugins"
+          mode = 493
+        },
+        {
+          path  = "/opt/sandbox"
+          mode  = 493
+          user  = { name = "core" }
+          group = { name = "core" }
+        },
+        {
+          path  = "/opt/sandbox/.secrets"
+          mode  = 448
+          user  = { name = "core" }
+          group = { name = "core" }
+        },
+        {
+          path  = "/opt/sandbox/acme"
+          mode  = 493
+          user  = { name = "core" }
+          group = { name = "core" }
+        }
+      ]
+      files = local.ignition_files
+    }
+    systemd = {
+      units = [
+        {
+          name     = "sandbox-bootstrap.service"
+          enabled  = true
+          contents = <<-EOT
+            [Unit]
+            Description=Bootstrap Islandora Sandbox
+            Wants=network-online.target
+            After=network-online.target
+            ConditionPathExists=!/opt/sandbox/.bootstrapped
+
+            [Service]
+            Type=oneshot
+            ExecStartPre=/usr/bin/mkdir -p /usr/local/lib/docker/cli-plugins /opt/sandbox /opt/sandbox/.secrets /opt/sandbox/acme
+            ExecStartPre=/usr/bin/chown -R core:core /opt/sandbox
+            ExecStartPre=/usr/bin/chmod 700 /opt/sandbox/.secrets
+            ExecStart=/usr/bin/bash /opt/sandbox/run.sh
+            ExecStartPost=/usr/bin/touch /opt/sandbox/.bootstrapped
+            RemainAfterExit=yes
+
+            [Install]
+            WantedBy=multi-user.target
+          EOT
+        },
+        {
+          name    = "sandbox.service"
+          enabled = true
+        },
+        {
+          name    = "rake.timer"
+          enabled = true
+        }
+      ]
+    }
   })
 }
 
@@ -123,5 +243,5 @@ module "environment" {
   image_id         = digitalocean_custom_image.coreos[0].id
   region           = var.region
   size             = var.droplet_size
-  user_data        = local.cloud_init
+  user_data        = local.ignition
 }

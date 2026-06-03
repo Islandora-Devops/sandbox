@@ -31,8 +31,8 @@ fmt: ## Format Terraform files
 
 lint: ## Check Terraform formatting and shell scripts
 	terraform fmt -check -recursive
-	terraform init -backend=false
-	terraform validate
+	TF_DATA_DIR=.terraform-lint terraform init -backend=false
+	TF_DATA_DIR=.terraform-lint terraform validate
 	terraform -chdir=bootstrap init
 	terraform -chdir=bootstrap validate
 	find . -name '*.sh' -print0 | xargs -0 shellcheck

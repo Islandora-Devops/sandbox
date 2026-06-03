@@ -30,6 +30,6 @@ variable "size" {
 
 variable "user_data" {
   type        = string
-  description = "Rendered cloud-init payload for the droplet"
+  description = "Rendered Ignition payload for the droplet"
   sensitive   = true
 }
