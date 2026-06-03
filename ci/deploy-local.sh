@@ -7,7 +7,7 @@ usage() {
   cat <<'EOF'
 Usage:
   ci/deploy-local.sh test <plan|apply|cleanup|destroy>
-  ci/deploy-local.sh prod <plan|apply|destroy>
+  ci/deploy-local.sh prod <plan|apply>
 
 Required environment:
   DIGITALOCEAN_TOKEN       DigitalOcean API token
@@ -90,6 +90,11 @@ case "$action" in
     exit 1
     ;;
 esac
+
+if [[ "$environment" == "prod" && "$action" == "destroy" ]]; then
+  echo "destroy is disabled for prod/sandbox" >&2
+  exit 1
+fi
 
 require_cmd curl
 require_cmd jq

@@ -137,6 +137,7 @@ locals {
       users = [
         {
           name              = "core"
+          groups            = ["docker"]
           sshAuthorizedKeys = var.ssh_keys
         }
       ]
@@ -176,8 +177,8 @@ locals {
           contents = <<-EOT
             [Unit]
             Description=Bootstrap Islandora Sandbox
-            Wants=network-online.target
-            After=network-online.target
+            Wants=network-online.target docker.service
+            After=network-online.target docker.service
             ConditionPathExists=!/opt/sandbox/.bootstrapped
 
             [Service]
@@ -192,6 +193,10 @@ locals {
             [Install]
             WantedBy=multi-user.target
           EOT
+        },
+        {
+          name    = "docker.service"
+          enabled = true
         },
         {
           name    = "sandbox.service"

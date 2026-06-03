@@ -47,7 +47,7 @@ bootstrap-state: ## Create the Terraform state Space with the no-backend bootstr
 tf-test: ## Run Terraform for test. Usage: make tf-test ACTION=plan|apply|cleanup|destroy
 	@ci/deploy-local.sh test "$${ACTION:-plan}"
 
-tf-prod: ## Run Terraform for sandbox/prod. Usage: make tf-prod ACTION=plan|apply|destroy
+tf-prod: ## Run Terraform for sandbox/prod. Usage: make tf-prod ACTION=plan|apply
 	@ci/deploy-local.sh prod "$${ACTION:-plan}"
 
 plan-test: ## Plan the test workspace

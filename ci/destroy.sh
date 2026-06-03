@@ -8,7 +8,8 @@ case "$workspace" in
     ci/deploy-local.sh test destroy
     ;;
   sandbox|prod)
-    ci/deploy-local.sh prod destroy
+    echo "Destroy is disabled for prod/sandbox" >&2
+    exit 1
     ;;
   *)
     echo "Unsupported workspace for ci/destroy.sh: ${workspace}" >&2
