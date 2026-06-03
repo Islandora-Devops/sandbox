@@ -3,6 +3,14 @@
   extends: [
     'github>islandora-devops/.github:renovate.json5',
   ],
+  customDatasources: {
+    'fedora-coreos': {
+      defaultRegistryUrlTemplate: 'https://builds.coreos.fedoraproject.org/streams/{{packageName}}.json',
+      transformTemplates: [
+        '{ "releases": [{ "version": architectures.x86_64.artifacts.digitalocean.release }] }',
+      ],
+    },
+  },
   customManagers: [
     {
       customType: 'regex',
@@ -19,16 +27,13 @@
     },
     {
       customType: 'regex',
-      description: 'Update Fedora CoreOS version',
+      description: 'Update Fedora CoreOS stream version',
       managerFilePatterns: [
-        '/terraform/main\\.tf/',
+        '/\\.tf$/',
       ],
       matchStrings: [
-        'coreos_version = "(?<currentValue>[\\d\\.]+)"',
+        '#\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+packageName=(?<packageName>\\S+)\\s+versioning=(?<versioning>\\S+)\\s+coreos_version\\s*=\\s*"(?<currentValue>[^"]+)"',
       ],
-      datasourceTemplate: 'github-releases',
-      packageNameTemplate: 'coreos/fedora-coreos-config',
-      versioningTemplate: 'loose',
     },
   ],
 }

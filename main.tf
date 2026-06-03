@@ -50,8 +50,8 @@ locals {
   environment       = try(local.supported_workspaces[terraform.workspace], null)
   manage_shared_dns = local.environment != null && local.environment.manages_shared_dns
 
-  # renovate: datasource=github-releases packageName=coreos/fedora-coreos-config versioning=loose
-  coreos_version = "43.20260217.3.1"
+  # renovate: datasource=custom.fedora-coreos packageName=stable versioning=loose
+  coreos_version = "44.20260510.3.1"
 
   rootfs_files = {
     for f in fileset("${path.module}/rootfs", "**") : f => {
