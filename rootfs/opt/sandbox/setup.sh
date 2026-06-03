@@ -46,9 +46,9 @@ cp /opt/sandbox/docker-compose.override.yml .
 mkdir -p ./secrets
 cp /opt/sandbox/.secrets/ACTIVEMQ_WEB_ADMIN_PASSWORD ./secrets/ACTIVEMQ_WEB_ADMIN_PASSWORD
 cp /opt/sandbox/.secrets/DRUPAL_DEFAULT_ACCOUNT_PASSWORD ./secrets/DRUPAL_DEFAULT_ACCOUNT_PASSWORD
+chown -R core:core /opt/sandbox/isle-site-template
 
-export GITHUB_ACTIONS="true"
-export TERM="${TERM:-dumb}"
-make init build demo-objects
+CORE_HOME="$(getent passwd core | cut -d: -f6)"
+runuser -u core -- env HOME="$CORE_HOME" TERM=xterm bash -lc 'cd /opt/sandbox/isle-site-template && make init build demo-objects'
 
 popd
