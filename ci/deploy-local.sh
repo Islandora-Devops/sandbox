@@ -119,6 +119,11 @@ if [[ -z "${TF_VAR_region:-}" ]]; then
   TF_VAR_region="$("$repo_root/ci/select-region.sh" "$TF_VAR_droplet_size")"
 fi
 
+auto_approve_args=()
+if [[ -n "${GITHUB_ACTION:-}" ]]; then
+  auto_approve_args=(-auto-approve)
+fi
+
 cd "$repo_root"
 
 terraform init -upgrade
@@ -137,7 +142,7 @@ case "$action" in
     ;;
   apply)
     echo "Applying ${workspace} in DigitalOcean region ${TF_VAR_region}"
-    terraform apply -auto-approve
+    terraform apply "${auto_approve_args[@]}"
     "$repo_root/ci/health-check.sh" "https://${domain}"
     if [[ "$environment" == "test" ]]; then
       "$repo_root/ci/screenshot.sh" "https://${domain}" "$repo_root/artifacts/test-islandora-ca.png"
@@ -145,7 +150,7 @@ case "$action" in
     fi
     ;;
   destroy)
-    terraform destroy -auto-approve
+    terraform destroy "${auto_approve_args[@]}"
     if [[ "$environment" == "test" ]]; then
       terraform workspace select default >/dev/null 2>&1
       terraform workspace delete "$workspace"
@@ -156,7 +161,7 @@ case "$action" in
       echo "cleanup is only supported for the test environment" >&2
       exit 1
     fi
-    terraform destroy -auto-approve \
+    terraform destroy "${auto_approve_args[@]}" \
       -target='module.environment["test"].digitalocean_reserved_ip_assignment.this' \
       -target='module.environment["test"].digitalocean_droplet.this' \
       -target='digitalocean_custom_image.coreos[0]' \
