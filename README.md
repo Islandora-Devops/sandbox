@@ -143,8 +143,8 @@ The GitHub workflows also go through the same `make` and `ci/*.sh` paths:
 
 ## Local Debugging
 
-Local debugging follows the same path as CI. GitHub Actions repository secrets
-use the same names as these local environment variables:
+Local debugging follows the same path as CI. Export these local environment
+variables:
 
 ```bash
 export AWS_ACCESS_KEY_ID="..."
@@ -218,16 +218,17 @@ Terraform workspaces:
 The shared parent `islandora.ca` zone is imported only in the `sandbox`
 workspace because that workspace is the only Terraform writer for shared DNS.
 
-Before importing, create GitHub Actions repository secrets with the same names
-used locally:
+Before importing, create GitHub Actions repository secrets:
 
-- `DIGITALOCEAN_TOKEN`
+- `DIGITALOCEAN_API_TOKEN`
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
 - `ISLE_PASSWORD`
 
-For local bootstrapping, export the same values and create the remote state
-bucket with the no-backend bootstrap root:
+GitHub Actions maps `DIGITALOCEAN_API_TOKEN` to the runtime
+`DIGITALOCEAN_TOKEN` environment variable used by Terraform and helper scripts.
+For local bootstrapping, export the runtime variable names directly and create
+the remote state bucket with the no-backend bootstrap root:
 
 ```bash
 export DIGITALOCEAN_TOKEN="..."
