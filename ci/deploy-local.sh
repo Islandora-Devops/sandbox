@@ -179,7 +179,6 @@ case "$action" in
     terraform destroy "${auto_approve_args[@]}" \
       -target='module.environment["test"].digitalocean_reserved_ip_assignment.this' \
       -target='module.environment["test"].digitalocean_droplet.this' \
-      -target='digitalocean_custom_image.coreos[0]' \
       -target='terraform_data.workspace_guard'
     ;;
 esac
