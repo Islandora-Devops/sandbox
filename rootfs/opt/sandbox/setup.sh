@@ -66,7 +66,7 @@ export HOME=/var/home/core
 sitectl config set-context sandbox \
   --type local \
   --plugin isle \
-  --project-dir $(pwd) \
+  --project-dir /opt/sandbox/isle-site-template \
   --project-name sandbox
 
 sitectl component set bot-mitigation on --yolo
