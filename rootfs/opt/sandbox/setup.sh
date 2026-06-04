@@ -62,6 +62,12 @@ if [ ! -d /opt/sandbox/isle-site-template ]; then
 fi
 
 pushd /opt/sandbox/isle-site-template
+export HOME=/var/home/core
+sitectl config set-context sandbox \
+  --type local \
+  --plugin isle \
+  --project-dir $(pwd) \
+  --project-name sandbox
 
 sitectl component set bot-mitigation on --yolo
 
