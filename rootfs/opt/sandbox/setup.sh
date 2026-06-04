@@ -2,6 +2,11 @@
 
 set -euo pipefail
 
+# renovate: datasource=github-releases depName=docker-compose packageName=docker/compose
+DOCKER_COMPOSE_VERSION=v5.1.4
+# renovate: datasource=github-releases depName=docker-buildx packageName=docker/buildx
+DOCKER_BUILDX_VERSION=v0.34.1
+
 # shellcheck disable=SC1091
 source /opt/sandbox/profile.sh
 
@@ -9,7 +14,7 @@ source /opt/sandbox/profile.sh
 if [ ! -f "/usr/local/lib/docker/cli-plugins/docker-compose" ]; then
   mkdir -p /usr/local/lib/docker/cli-plugins
   retry_until_success curl -sSL \
-    https://github.com/docker/compose/releases/download/v5.1.0/docker-compose-linux-x86_64 \
+    "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-x86_64" \
     -o /usr/local/lib/docker/cli-plugins/docker-compose
   chmod a+x /usr/local/lib/docker/cli-plugins/docker-compose
 fi
@@ -17,7 +22,7 @@ fi
 # Install docker-buildx (replaces install-buildx.service)
 if [ ! -f "/usr/local/lib/docker/cli-plugins/docker-buildx" ]; then
   retry_until_success curl -sSL \
-    https://github.com/docker/buildx/releases/download/v0.32.0/buildx-v0.32.0.linux-amd64 \
+    "https://github.com/docker/buildx/releases/download/${DOCKER_BUILDX_VERSION}/buildx-${DOCKER_BUILDX_VERSION}.linux-amd64" \
     -o /usr/local/lib/docker/cli-plugins/docker-buildx
   chmod a+x /usr/local/lib/docker/cli-plugins/docker-buildx
 fi
