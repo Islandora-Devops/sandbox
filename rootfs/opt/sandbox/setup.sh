@@ -70,6 +70,7 @@ sitectl config set-context sandbox \
   --project-name sandbox
 
 sitectl component set bot-mitigation on --yolo
+sitectl component set isle-tls enabled --tls-mode letsencrypt --yolo
 
 cp /opt/sandbox/.env .
 cp /opt/sandbox/docker-compose.override.yml .
