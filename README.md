@@ -121,7 +121,8 @@ for non-destroy actions, and then runs the requested Terraform action.
 Terraform reads the base environment from [.env](./.env) and writes
 workspace-specific `DOMAIN` and `TAG` values into the VM Ignition payload.
 During VM bootstrap, [rootfs/opt/sandbox/setup.sh](./rootfs/opt/sandbox/setup.sh)
-clones [isle-site-template], copies the generated `.env` and secrets, then runs
+installs the required host tools, clones [isle-site-template], enables the
+`bot-mitigation` component, copies the generated `.env` and secrets, then runs
 `make init build demo-objects`.
 
 The default droplet size is `s-4vcpu-8gb-amd`, matching the imported sandbox

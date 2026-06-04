@@ -10,6 +10,17 @@ DOCKER_BUILDX_VERSION=v0.34.1
 # shellcheck disable=SC1091
 source /opt/sandbox/profile.sh
 
+install -d /etc/yum.repos.d
+cat >/etc/yum.repos.d/sitectl.repo <<'EOF'
+[sitectl]
+name=sitectl
+baseurl=https://packages.libops.io/sitectl/rpm
+enabled=1
+gpgcheck=0
+repo_gpgcheck=1
+gpgkey=https://packages.libops.io/sitectl/sitectl-archive-keyring.asc
+EOF
+
 # Install docker-compose (replaces install-docker-compose.service)
 if [ ! -f "/usr/local/lib/docker/cli-plugins/docker-compose" ]; then
   mkdir -p /usr/local/lib/docker/cli-plugins
@@ -27,9 +38,16 @@ if [ ! -f "/usr/local/lib/docker/cli-plugins/docker-buildx" ]; then
   chmod a+x /usr/local/lib/docker/cli-plugins/docker-buildx
 fi
 
-# Install make (replaces install-make.service)
+# Install host packages (replaces install-make.service)
+packages=()
 if [ ! -f /usr/bin/make ]; then
-  rpm-ostree install --apply-live make
+  packages+=(make)
+fi
+if ! rpm -q sitectl-isle >/dev/null 2>&1; then
+  packages+=(sitectl-isle)
+fi
+if [ "${#packages[@]}" -gt 0 ]; then
+  rpm-ostree install --apply-live "${packages[@]}"
 fi
 
 # Clone and initialise isle-site-template (replaces setup-sandbox.service)
@@ -44,6 +62,15 @@ if [ ! -d /opt/sandbox/isle-site-template ]; then
 fi
 
 pushd /opt/sandbox/isle-site-template
+export HOME=/var/home/core
+sitectl config set-context sandbox \
+  --type local \
+  --plugin isle \
+  --project-dir $(pwd) \
+  --project-name sandbox
+
+sitectl component set bot-mitigation on --yolo
+sitectl component set isle-tls enabled --tls-mode letsencrypt --yolo
 
 cp /opt/sandbox/.env .
 cp /opt/sandbox/docker-compose.override.yml .
