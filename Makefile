@@ -18,7 +18,6 @@ export TF_VAR_test_domain := $(TEST_DOMAIN)
 export TF_VAR_sandbox_domain := $(SANDBOX_DOMAIN)
 export TF_VAR_droplet_size := s-4vcpu-8gb-amd
 export DIGITALOCEAN_CANDIDATE_REGIONS ?= tor1 nyc3 sfo3
-export TF_VAR_ssh_keys := ["ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC92mfUd/zMuzWqAod/xuqrE2to4ae1cRiknK81uMHfVHpXoxx2xM7PkmMsO9ShQtWsu0V0q4A9kozzv22HVDL51iVapESrM4q2KWiDHnE45U8RH/DDRX5NdW3+GvNQk2ITyHR4CVpvwYXCYfI4bha4R4jF7oc7pDmLcgcYN+9OSptUnWUbxqiWqfuwWSmux9N1HHiVDTt/2W8qgszAzwXI64ooK5pkU7KSXQ9A/w4Ra/xmZioCKAB4MZh5HIwNoVgZ8OCXLBL66cQTJEQnmkCc3rVeHikBhvUxCnKWGmdjcBG/XGxqHIQ1HVn7GSlclJ8hGISZZcBaB4RVFCUK4i8tvKbM1dHNyNnZGAWJUCMQDH8Dkx8wnOAWdq4ed1cd16Jt3y4cEcHEUSXmZmViYMNHbqqL+yaj3nhCDIwa7CzoVLZ4Vj8xOvn/X2JMaLPhJFY//5Y6Dep01Nm+4d0Xf4gYo3H6Hmo/jBeXO/VRPHKbbZIMlA04mrlClosgUqkm+cE=","ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHZds7DX1z9IN0T7H/yXZrUIlOHiPzqK9oWN8brKh06e jjc223@Mac"]
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
