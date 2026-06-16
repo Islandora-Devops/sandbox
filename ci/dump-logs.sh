@@ -6,7 +6,7 @@ domain="${1:?Usage: dump-logs.sh <domain>}"
 key_file="$(mktemp)"
 trap 'rm -f "$key_file"' EXIT
 
-echo "${PACKER_SSH_KEY:?PACKER_SSH_KEY must be set}" > "$key_file"
+printf '%s\n' "${PACKER_SSH_KEY:?PACKER_SSH_KEY must be set}" > "$key_file"
 chmod 600 "$key_file"
 
 echo "=== Logs from ${domain} ==="

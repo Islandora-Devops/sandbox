@@ -43,6 +43,9 @@ jobs:
 
       - name: Post Terraform plan comment
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v7
+        env:
+          TEST_PLAN: ${{ steps.plan_test.outputs.test_plan }}
+          SANDBOX_PLAN: ${{ steps.plan_sandbox.outputs.sandbox_plan }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -55,7 +58,7 @@ jobs:
             <details><summary>test workspace</summary>
 
             \`\`\`terraform
-            ${{ steps.plan_test.outputs.test_plan }}
+            ${process.env.TEST_PLAN || ''}
             \`\`\`
 
             </details>
@@ -63,7 +66,7 @@ jobs:
             <details><summary>sandbox workspace</summary>
 
             \`\`\`terraform
-            ${{ steps.plan_sandbox.outputs.sandbox_plan }}
+            ${process.env.SANDBOX_PLAN || ''}
             \`\`\`
 
             </details>`;

@@ -4,18 +4,30 @@ set -euo pipefail
 url="${1:?Usage: health-check.sh <url> [node-id ...]}"
 shift || true
 
-echo "Giving VM 10m to come online..."
-sleep 600
+timeout_seconds="${HEALTH_CHECK_TIMEOUT_SECONDS:-1500}"
+interval_seconds="${HEALTH_CHECK_INTERVAL_SECONDS:-30}"
+deadline=$((SECONDS + timeout_seconds))
+attempt=1
 
-echo "Waiting for ${url} to become available..."
-for i in $(seq 1 30); do
+echo "Waiting up to ${timeout_seconds}s for ${url} to become available..."
+while true; do
   if ci/check-nodes.sh "$url" "$@"; then
     echo "Health check passed"
     exit 0
   fi
-  echo "Attempt ${i}/30: required nodes are not ready yet"
-  sleep 30
-done
 
-echo "Health check failed after 25 minutes"
-exit 1
+  if (( SECONDS >= deadline )); then
+    echo "Health check failed after ${timeout_seconds}s"
+    exit 1
+  fi
+
+  remaining_seconds=$((deadline - SECONDS))
+  sleep_seconds=$interval_seconds
+  if (( remaining_seconds < sleep_seconds )); then
+    sleep_seconds=$remaining_seconds
+  fi
+
+  echo "Attempt ${attempt}: required nodes are not ready yet; retrying in ${sleep_seconds}s"
+  attempt=$((attempt + 1))
+  sleep "$sleep_seconds"
+done

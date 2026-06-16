@@ -17,10 +17,11 @@ Required environment:
 
 Optional environment:
   ACTION                         Makefile action selector. Defaults to plan.
-  DIGITALOCEAN_CANDIDATE_REGIONS Space-separated region preference list. Defaults to "tor1 nyc3 sfo3".
+  DIGITALOCEAN_CANDIDATE_REGIONS Space-separated region preference list for test. Defaults to "tor1 nyc3 sfo3".
+  SANDBOX_REGION                  Default sandbox/prod region. Defaults to "tor1".
   REQUIRED_NODE_IDS              Space-separated Drupal node IDs to validate after apply. Defaults to "20 50".
   TF_VAR_droplet_size            DigitalOcean size slug. Defaults to "s-4vcpu-8gb-amd".
-  TF_VAR_region                  DigitalOcean region override. When unset, the script selects an available region.
+  TF_VAR_region                  DigitalOcean region override. When unset, test selects an available region and prod uses SANDBOX_REGION.
   TF_OUTPUT_NAME                 GitHub Actions output name for plan output.
   ALLOW_FULL_TEST_DESTROY        Set to "true" to permit ACTION=destroy for the test workspace.
 EOF
@@ -129,7 +130,9 @@ else
   export TF_VAR_isle_password="${TF_VAR_isle_password:-placeholder}"
 fi
 
-if [[ -z "${TF_VAR_region:-}" ]]; then
+if [[ -z "${TF_VAR_region:-}" && "$environment" == "prod" ]]; then
+  export TF_VAR_region="${SANDBOX_REGION:-tor1}"
+elif [[ -z "${TF_VAR_region:-}" ]]; then
   export TF_VAR_region
   TF_VAR_region="$("$repo_root/ci/select-region.sh" "$TF_VAR_droplet_size")"
 fi

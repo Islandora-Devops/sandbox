@@ -28,6 +28,9 @@ terraform {
 
 provider "digitalocean" {}
 
+# This imports the remote-state Space into the sandbox workspace for drift
+# visibility. Do not enable sandbox destroy without first moving this bucket out
+# of the state it stores.
 resource "digitalocean_spaces_bucket" "terraform_state" {
   count  = terraform.workspace == "sandbox" ? 1 : 0
   name   = "sandbox-terraform-state"

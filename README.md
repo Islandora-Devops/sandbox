@@ -116,8 +116,9 @@ roots, and runs ShellCheck against all `*.sh` scripts.
 `ACTION` defaults to `plan`, so `make tf-test` and `make tf-prod` are shorthand
 for planning the test and production workspaces. The deploy script initializes
 the remote Spaces backend, selects the Terraform workspace, selects an available
-DigitalOcean region unless `TF_VAR_region` is already set, validates Terraform
-for non-destroy actions, and then runs the requested Terraform action.
+DigitalOcean region for test unless `TF_VAR_region` is already set, pins
+production to `SANDBOX_REGION` or `tor1` by default, validates Terraform for
+non-destroy actions, and then runs the requested Terraform action.
 Terraform reads the base environment from [.env](./.env) and writes
 workspace-specific `DOMAIN` and `TAG` values into the VM Ignition payload.
 During VM bootstrap, [rootfs/opt/sandbox/setup.sh](./rootfs/opt/sandbox/setup.sh)
