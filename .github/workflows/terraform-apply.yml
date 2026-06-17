@@ -4,10 +4,20 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Deployment target
+        required: true
+        type: choice
+        default: prod
+        options:
+          - prod
+          - promote
 
 jobs:
   promote:
-    name: Promote Sandbox
+    name: Deploy Sandbox
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -26,11 +36,13 @@ jobs:
           terraform_version: 1.14.6
 
       - name: Deploy and validate test
+        if: github.event_name == 'push' || inputs.target == 'promote'
         run: make tf-test ACTION=apply
         env:
           ISLE_PASSWORD: ${{ secrets.ISLE_PASSWORD }}
 
       - name: Upload test deployment artifacts
+        if: github.event_name == 'push' || inputs.target == 'promote'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: test-deployment-artifacts
@@ -44,6 +56,7 @@ jobs:
           ISLE_PASSWORD: ${{ secrets.ISLE_PASSWORD }}
 
       - name: Clean up test compute after sandbox promotion
+        if: github.event_name == 'push' || inputs.target == 'promote'
         run: make tf-test ACTION=cleanup
         env:
           ISLE_PASSWORD: ${{ secrets.ISLE_PASSWORD }}

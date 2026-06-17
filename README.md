@@ -41,7 +41,14 @@ workspace so there is only one writer for the shared DNS records.
 - A Spaces access key and secret key
 - Terraform 1.11+
 - `jq`
-- Chrome or Chromium if you want to capture review screenshots locally
+- Chrome or Chromium for health checks and review screenshots
+
+For local health checks, `ci/health-check.sh` looks for `google-chrome`,
+`google-chrome-stable`, `chromium`, `chromium-browser`, and the standard macOS
+Google Chrome app path. Set `HEALTH_CHECK_BROWSER` if Chrome is installed
+somewhere else. The browser load keeps JavaScript alive for 12 seconds by
+default so captcha-protect can autosubmit its challenge before the node checks
+run; override that with `HEALTH_CHECK_CHALLENGE_WAIT_SECONDS` if needed.
 
 ## Remote State
 
