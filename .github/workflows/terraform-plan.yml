@@ -63,7 +63,7 @@ jobs:
 
             </details>
 
-            <details><summary>sandbox workspace</summary>
+            <details open><summary>sandbox workspace</summary>
 
             \`\`\`terraform
             ${process.env.SANDBOX_PLAN || ''}
