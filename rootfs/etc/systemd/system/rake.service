@@ -1,0 +1,10 @@
+[Unit]
+Description=Rake Sandbox
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl try-restart sandbox.service
+
+[Install]
+WantedBy=multi-user.target

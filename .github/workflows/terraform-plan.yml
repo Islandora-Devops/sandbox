@@ -1,0 +1,86 @@
+name: Terraform Plan
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  terraform:
+    name: Terraform Plan
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_API_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: 1.14.6
+
+      - name: Lint Terraform and shell scripts
+        run: make lint
+
+      - name: Terraform Plan test
+        id: plan_test
+        run: make tf-test ACTION=plan TF_OUTPUT_NAME=test_plan
+        env:
+          ISLE_PASSWORD: ${{ secrets.ISLE_PASSWORD }}
+
+      - name: Terraform Plan sandbox
+        id: plan_sandbox
+        run: make tf-prod ACTION=plan TF_OUTPUT_NAME=sandbox_plan
+        env:
+          ISLE_PASSWORD: ${{ secrets.ISLE_PASSWORD }}
+
+      - name: Post Terraform plan comment
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v7
+        env:
+          TEST_PLAN: ${{ steps.plan_test.outputs.test_plan }}
+          SANDBOX_PLAN: ${{ steps.plan_sandbox.outputs.sandbox_plan }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issue_number = context.issue.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const commentIdentifier = '<!-- terraform-plan-comment -->';
+            const newCommentBody = `#### Terraform Plan
+            ${commentIdentifier}
+            <details><summary>test workspace</summary>
+
+            \`\`\`terraform
+            ${process.env.TEST_PLAN || ''}
+            \`\`\`
+
+            </details>
+
+            <details open><summary>sandbox workspace</summary>
+
+            \`\`\`terraform
+            ${process.env.SANDBOX_PLAN || ''}
+            \`\`\`
+
+            </details>`;
+
+            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const existingComment = comments.find(c => c.body.includes(commentIdentifier));
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existingComment.id,
+                body: newCommentBody,
+              });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body: newCommentBody });
+            }

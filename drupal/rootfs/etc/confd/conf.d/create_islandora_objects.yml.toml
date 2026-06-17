@@ -1,7 +1,0 @@
-[template]
-src = "create_islandora_objects.yml.tmpl"
-dest = "/var/www/drupal/islandora_demo_objects/create_islandora_objects.yml"
-uid = 100
-gid = 101
-mode = "0640"
-keys = [ "/" ]

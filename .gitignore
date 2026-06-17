@@ -4,5 +4,9 @@
 # Build outputs.
 build
 .terraform
-# Ignore per / user customizations.
-docker-compose.override.yml
+.terraform-lint
+terraform.tfstate
+**/.terraform
+**/.terraform-lint
+**/terraform.tfstate
+**/terraform.tfstate.backup
