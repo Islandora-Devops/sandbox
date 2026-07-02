@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # renovate: datasource=github-releases depName=docker-compose packageName=docker/compose
-DOCKER_COMPOSE_VERSION=v5.2.0
+DOCKER_COMPOSE_VERSION=v5.3.0
 # renovate: datasource=github-releases depName=docker-buildx packageName=docker/buildx
 DOCKER_BUILDX_VERSION=v0.35.0
 
