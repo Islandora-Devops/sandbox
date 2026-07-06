@@ -2,6 +2,7 @@
 set -euo pipefail
 
 workspace="${1:?usage: ci/delete-workspace.sh <workspace>}"
+export TF_DATA_DIR="${TF_DATA_DIR:-${TMPDIR:-/tmp}/sandbox-terraform}"
 
 if [[ "$workspace" == "default" ]]; then
   echo "refusing to delete the default workspace" >&2

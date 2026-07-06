@@ -5,12 +5,15 @@ set -euo pipefail
 # terraform import evaluates the full config, so required variables still need
 # values even when they are not part of the imported resource.
 export TF_VAR_isle_password="${TF_VAR_isle_password:-placeholder}"
+export TF_DATA_DIR="${TF_DATA_DIR:-${TMPDIR:-/tmp}/sandbox-terraform}"
 
 : "${DIGITALOCEAN_TOKEN:?DIGITALOCEAN_TOKEN must be set}"
 : "${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID must be set}"
 : "${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY must be set}"
 export SPACES_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID"
 export SPACES_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"
+
+terraform init -upgrade
 
 sandbox_ip="${SANDBOX_RESERVED_IP:-159.203.49.92}"
 test_ip="${TEST_RESERVED_IP:-174.138.112.33}"
@@ -36,11 +39,6 @@ rid_data() {
     | .id'
 }
 
-image_id_by_name() {
-  local name="$1"
-  doctl compute image list --output json | jq -r --arg name "$name" '.[] | select(.name == $name) | .id' | head -n1
-}
-
 droplet_id_by_name() {
   local name="$1"
   doctl compute droplet list --output json | jq -r --arg name "$name" '.[] | select(.name == $name) | .id' | head -n1
@@ -59,6 +57,15 @@ import_if_present() {
   fi
 }
 
+import_droplet_if_present() {
+  local address="$1" legacy_address="$2" id="$3"
+  if terraform state show "$address" >/dev/null 2>&1 || terraform state show "$legacy_address" >/dev/null 2>&1; then
+    echo "Skipping $address: already managed in state"
+    return
+  fi
+  import_if_present "$address" "$id"
+}
+
 echo "Fetching domain records..."
 islandora_records="$(doctl compute domain records list islandora.ca --output json)"
 sandbox_records="$(doctl compute domain records list sandbox.islandora.ca --output json)"
@@ -67,17 +74,14 @@ test_records="$(doctl compute domain records list test.islandora.ca --output jso
 echo "Importing sandbox workspace resources..."
 select_workspace sandbox
 
-sandbox_image_name="${SANDBOX_COREOS_IMAGE_NAME:-fedora-coreos-43.20260217.3.1-sandbox-${TF_VAR_region:-tor1}}"
-sandbox_image_id="$(image_id_by_name "$sandbox_image_name")"
 sandbox_droplet_id="$(droplet_id_by_name sandbox)"
 
 import_if_present 'digitalocean_spaces_bucket.terraform_state[0]' 'tor1,sandbox-terraform-state'
-import_if_present 'digitalocean_custom_image.coreos[0]' "$sandbox_image_id"
 import_if_present 'module.environment["sandbox"].digitalocean_domain.this' 'sandbox.islandora.ca'
 import_if_present 'module.environment["sandbox"].digitalocean_reserved_ip.this' "$sandbox_ip"
 import_if_present 'module.environment["sandbox"].digitalocean_record.root_a' "sandbox.islandora.ca,$(rid "$sandbox_records" A @)"
 import_if_present 'module.environment["sandbox"].digitalocean_record.wildcard_cname' "sandbox.islandora.ca,$(rid "$sandbox_records" CNAME '*')"
-import_if_present 'module.environment["sandbox"].digitalocean_droplet.this' "$sandbox_droplet_id"
+import_droplet_if_present 'module.cloud_compose["sandbox"].module.digitalocean[0].digitalocean_droplet.cloud_compose' 'module.environment["sandbox"].digitalocean_droplet.this' "$sandbox_droplet_id"
 import_if_present 'module.environment["sandbox"].digitalocean_reserved_ip_assignment.this' "${sandbox_ip},${sandbox_droplet_id}"
 
 import_if_present 'digitalocean_domain.islandora_ca[0]' 'islandora.ca'
@@ -114,16 +118,13 @@ import_if_present 'digitalocean_record.islandora_ca_txt_spf[0]' "islandora.ca,$(
 echo "Importing test workspace resources..."
 select_workspace test
 
-test_image_name="${TEST_COREOS_IMAGE_NAME:-fedora-coreos-43.20260217.3.1-test-${TF_VAR_region:-tor1}}"
-test_image_id="$(image_id_by_name "$test_image_name")"
 test_droplet_id="$(droplet_id_by_name test)"
 
-import_if_present 'digitalocean_custom_image.coreos[0]' "$test_image_id"
 import_if_present 'module.environment["test"].digitalocean_domain.this' 'test.islandora.ca'
 import_if_present 'module.environment["test"].digitalocean_reserved_ip.this' "$test_ip"
 import_if_present 'module.environment["test"].digitalocean_record.root_a' "test.islandora.ca,$(rid "$test_records" A @)"
 import_if_present 'module.environment["test"].digitalocean_record.wildcard_cname' "test.islandora.ca,$(rid "$test_records" CNAME '*')"
-import_if_present 'module.environment["test"].digitalocean_droplet.this' "$test_droplet_id"
+import_droplet_if_present 'module.cloud_compose["test"].module.digitalocean[0].digitalocean_droplet.cloud_compose' 'module.environment["test"].digitalocean_droplet.this' "$test_droplet_id"
 import_if_present 'module.environment["test"].digitalocean_reserved_ip_assignment.this' "${test_ip},${test_droplet_id}"
 
 echo "Imports complete."

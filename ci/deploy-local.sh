@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+export TF_DATA_DIR="${TF_DATA_DIR:-${TMPDIR:-/tmp}/sandbox-terraform}"
 
 usage() {
   cat <<'EOF'
@@ -181,7 +182,7 @@ case "$action" in
     fi
     terraform destroy "${auto_approve_args[@]}" \
       -target='module.environment["test"].digitalocean_reserved_ip_assignment.this' \
-      -target='module.environment["test"].digitalocean_droplet.this' \
+      -target='module.cloud_compose["test"]' \
       -target='terraform_data.workspace_guard'
     ;;
 esac

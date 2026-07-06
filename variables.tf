@@ -1,11 +1,12 @@
 variable "ssh_keys" {
   type        = list(string)
-  description = "SSH public keys to authorize for the core user on all droplets"
+  description = "SSH public keys to authorize for the cloud-compose user on all droplets"
 
   # Operator-maintained public keys. These are intentionally committed for
   # bootstrap access, but should be reviewed when maintainers change.
   default = [
     "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC92mfUd/zMuzWqAod/xuqrE2to4ae1cRiknK81uMHfVHpXoxx2xM7PkmMsO9ShQtWsu0V0q4A9kozzv22HVDL51iVapESrM4q2KWiDHnE45U8RH/DDRX5NdW3+GvNQk2ITyHR4CVpvwYXCYfI4bha4R4jF7oc7pDmLcgcYN+9OSptUnWUbxqiWqfuwWSmux9N1HHiVDTt/2W8qgszAzwXI64ooK5pkU7KSXQ9A/w4Ra/xmZioCKAB4MZh5HIwNoVgZ8OCXLBL66cQTJEQnmkCc3rVeHikBhvUxCnKWGmdjcBG/XGxqHIQ1HVn7GSlclJ8hGISZZcBaB4RVFCUK4i8tvKbM1dHNyNnZGAWJUCMQDH8Dkx8wnOAWdq4ed1cd16Jt3y4cEcHEUSXmZmViYMNHbqqL+yaj3nhCDIwa7CzoVLZ4Vj8xOvn/X2JMaLPhJFY//5Y6Dep01Nm+4d0Xf4gYo3H6Hmo/jBeXO/VRPHKbbZIMlA04mrlClosgUqkm+cE=",
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOuUgUvvcJyWVZkgLrBGGI9RfcNmQsw32QNftNS5/Iiv jcorall@MacBookPro",
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHZds7DX1z9IN0T7H/yXZrUIlOHiPzqK9oWN8brKh06e jjc223@Mac",
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDpnsCo+43hAzcECq+2gro/s8OrsRNVZFsnVWb7Dt+Tv aOelschlager"
   ]
@@ -40,13 +41,31 @@ variable "sandbox_domain" {
 variable "region" {
   type        = string
   default     = "tor1"
-  description = "DigitalOcean region selected for the environment droplet and CoreOS custom image"
+  description = "DigitalOcean region selected for the environment resources"
 }
 
 variable "droplet_size" {
   type        = string
   default     = "s-4vcpu-8gb-amd"
   description = "DigitalOcean droplet size slug"
+}
+
+variable "droplet_image" {
+  type        = string
+  default     = "ubuntu-24-04-x64"
+  description = "DigitalOcean image slug used by cloud-compose"
+}
+
+variable "data_volume_size_gb" {
+  type        = number
+  default     = 50
+  description = "Size of the persistent application data volume in GiB"
+}
+
+variable "docker_volumes_volume_size_gb" {
+  type        = number
+  default     = 100
+  description = "Size of the persistent Docker volumes volume in GiB"
 }
 
 variable "repo_url" {
@@ -58,5 +77,11 @@ variable "repo_url" {
 variable "repo_branch" {
   type        = string
   default     = "main"
-  description = "Git branch to clone from the isle-site-template repository"
+  description = "Git branch to clone from the ISLE cloud-compose project"
+}
+
+variable "acme_email" {
+  type        = string
+  default     = ""
+  description = "Let's Encrypt contact email. Defaults to ACME_EMAIL from .env when unset."
 }

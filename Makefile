@@ -9,6 +9,7 @@ SHELL := /bin/bash
 TEST_DOMAIN := test.islandora.ca
 SANDBOX_DOMAIN := sandbox.islandora.ca
 REQUIRED_NODE_IDS ?= 20 50
+LINT_TF_DATA_DIR ?= /tmp/sandbox-terraform-lint
 
 export TEST_DOMAIN
 export SANDBOX_DOMAIN
@@ -30,14 +31,15 @@ fmt: ## Format Terraform files
 
 lint: ## Check Terraform formatting and shell scripts
 	terraform fmt -check -recursive
-	TF_DATA_DIR=.terraform-lint terraform init -backend=false
-	TF_DATA_DIR=.terraform-lint terraform validate
+	TF_DATA_DIR="$(LINT_TF_DATA_DIR)" terraform init -backend=false
+	TF_DATA_DIR="$(LINT_TF_DATA_DIR)" terraform validate
 	terraform -chdir=bootstrap init
 	terraform -chdir=bootstrap validate
+	command -v shellcheck >/dev/null
 	find . -name '*.sh' -print0 | xargs -0 shellcheck
 
 init: ## Initialize Terraform with the configured remote backend
-	terraform init -upgrade
+	TF_DATA_DIR="$${TF_DATA_DIR:-$${TMPDIR:-/tmp}/sandbox-terraform}" terraform init -upgrade
 
 bootstrap-state: ## Create the Terraform state Space with the no-backend bootstrap root
 	SPACES_ACCESS_KEY_ID="$$AWS_ACCESS_KEY_ID" SPACES_SECRET_ACCESS_KEY="$$AWS_SECRET_ACCESS_KEY" terraform -chdir=bootstrap init -upgrade
@@ -60,10 +62,8 @@ plan: plan-test plan-prod ## Plan both test and sandbox/prod workspaces
 review-pr: ## Compatibility target: apply and validate test
 	$(MAKE) tf-test ACTION=apply
 
-promote-sandbox: ## Apply test, apply sandbox/prod, then clean up test compute
-	$(MAKE) tf-test ACTION=apply
+promote-sandbox: ## Compatibility target: apply sandbox/prod
 	$(MAKE) tf-prod ACTION=apply
-	$(MAKE) tf-test ACTION=cleanup
 
 deploy-test: ## Apply and validate test
 	$(MAKE) tf-test ACTION=apply

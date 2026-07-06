@@ -4,7 +4,7 @@ set -euo pipefail
 url="${1:?Usage: health-check.sh <url> [node-id ...]}"
 shift || true
 
-timeout_seconds="${HEALTH_CHECK_TIMEOUT_SECONDS:-1500}"
+timeout_seconds="${HEALTH_CHECK_TIMEOUT_SECONDS:-1200}"
 interval_seconds="${HEALTH_CHECK_INTERVAL_SECONDS:-30}"
 challenge_wait_seconds="${HEALTH_CHECK_CHALLENGE_WAIT_SECONDS:-12}"
 deadline=$((SECONDS + timeout_seconds))

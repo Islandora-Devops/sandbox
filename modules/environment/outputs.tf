@@ -4,6 +4,6 @@ output "reserved_ip" {
 }
 
 output "region" {
-  description = "DigitalOcean region selected for the environment droplet"
-  value       = digitalocean_droplet.this.region
+  description = "DigitalOcean region selected for the environment resources"
+  value       = var.region
 }

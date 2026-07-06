@@ -1,10 +1,13 @@
 [Unit]
 Description=Rake Sandbox
-After=docker.service
+After=cloud-compose.service docker.service
+Wants=cloud-compose.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/systemctl try-restart sandbox.service
-
-[Install]
-WantedBy=multi-user.target
+User=cloud-compose
+Group=cloud-compose
+Environment=HOME=/home/cloud-compose
+Environment=TERM=xterm
+WorkingDirectory=/home/cloud-compose
+ExecStart=/bin/bash /home/cloud-compose/rake.sh

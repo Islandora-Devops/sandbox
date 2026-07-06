@@ -2,8 +2,10 @@
 Description=Rake Sandbox Timer
 
 [Timer]
-OnCalendar=*-*-* 1:00:00 America/Halifax
-Persistent=True
+OnCalendar=*-*-* 03:15:00 America/Toronto
+RandomizedDelaySec=30min
+Persistent=true
+Unit=rake.service
 
 [Install]
 WantedBy=timers.target

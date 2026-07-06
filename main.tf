@@ -43,175 +43,44 @@ locals {
     sandbox = {
       domain             = var.sandbox_domain
       manages_shared_dns = true
+      production         = true
     }
     test = {
       domain             = var.test_domain
       manages_shared_dns = false
+      production         = false
     }
   }
 
   environment       = try(local.supported_workspaces[terraform.workspace], null)
   manage_shared_dns = local.environment != null && local.environment.manages_shared_dns
 
-  # renovate: datasource=custom.fedora-coreos packageName=stable versioning=loose
-  coreos_version = "44.20260607.3.1"
-
-  rootfs_files = {
-    for f in fileset("${path.module}/rootfs", "**") : f => {
-      source = "data:text/plain;charset=utf-8;base64,${base64encode(file("${path.module}/rootfs/${f}"))}"
-      mode   = endswith(f, ".sh") ? 493 : 420
-    }
+  base_env = {
+    for match in regexall("(?m)^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", file("${path.module}/.env")) :
+    match[0] => match[1]
   }
-
-  base_env_contents = file("${path.module}/.env")
   workspace_env_overrides = local.environment == null ? {} : {
-    DOMAIN = local.environment.domain
-    TAG    = terraform.workspace
+    COMPOSE_PROJECT_NAME = terraform.workspace
+    DOMAIN               = local.environment.domain
+    TAG                  = terraform.workspace
   }
-  environment_contents = join("\n", concat(
-    [
-      for line in split("\n", local.base_env_contents) : line
-      if !contains(keys(local.workspace_env_overrides), try(regex("^([A-Za-z_][A-Za-z0-9_]*)=", line)[0], ""))
-    ],
-    [
-      for key, value in local.workspace_env_overrides : "${key}=${value}"
-    ],
-    [""]
-  ))
-
-  ignition_files = concat(
-    [
-      for path, entry in local.rootfs_files : merge(
-        {
-          path     = "/${path}"
-          mode     = entry.mode
-          contents = { source = entry.source }
-        },
-        startswith(path, "opt/sandbox/") ? {
-          user  = { name = "core" }
-          group = { name = "core" }
-        } : {}
-      )
-    ],
-    [
-      {
-        path     = "/opt/sandbox/.secrets/ACTIVEMQ_WEB_ADMIN_PASSWORD"
-        mode     = 384
-        user     = { name = "core" }
-        group    = { name = "core" }
-        contents = { source = "data:text/plain;charset=utf-8;base64,${base64encode(var.isle_password)}" }
-      },
-      {
-        path     = "/opt/sandbox/.secrets/DRUPAL_DEFAULT_ACCOUNT_PASSWORD"
-        mode     = 384
-        user     = { name = "core" }
-        group    = { name = "core" }
-        contents = { source = "data:text/plain;charset=utf-8;base64,${base64encode(var.isle_password)}" }
-      },
-      {
-        path     = "/opt/sandbox/.env"
-        mode     = 420
-        user     = { name = "core" }
-        group    = { name = "core" }
-        contents = { source = "data:text/plain;charset=utf-8;base64,${base64encode(local.environment_contents)}" }
-      },
-      {
-        path     = "/opt/sandbox/.repo-url"
-        mode     = 420
-        user     = { name = "core" }
-        group    = { name = "core" }
-        contents = { source = "data:text/plain;charset=utf-8;base64,${base64encode(var.repo_url)}" }
-      },
-      {
-        path     = "/opt/sandbox/.repo-branch"
-        mode     = 420
-        user     = { name = "core" }
-        group    = { name = "core" }
-        contents = { source = "data:text/plain;charset=utf-8;base64,${base64encode(var.repo_branch)}" }
-      }
-    ]
-  )
-
-  ignition = local.environment == null ? "" : jsonencode({
-    ignition = {
-      version = "3.4.0"
-    }
-    passwd = {
-      users = [
-        {
-          name              = "core"
-          groups            = ["docker"]
-          sshAuthorizedKeys = var.ssh_keys
-        }
-      ]
-    }
-    storage = {
-      directories = [
-        {
-          path = "/usr/local/lib/docker/cli-plugins"
-          mode = 493
-        },
-        {
-          path  = "/opt/sandbox"
-          mode  = 493
-          user  = { name = "core" }
-          group = { name = "core" }
-        },
-        {
-          path  = "/opt/sandbox/.secrets"
-          mode  = 448
-          user  = { name = "core" }
-          group = { name = "core" }
-        },
-        {
-          path  = "/opt/sandbox/acme"
-          mode  = 493
-          user  = { name = "core" }
-          group = { name = "core" }
-        }
-      ]
-      files = local.ignition_files
-    }
-    systemd = {
-      units = [
-        {
-          name     = "sandbox-bootstrap.service"
-          enabled  = true
-          contents = <<-EOT
-            [Unit]
-            Description=Bootstrap Islandora Sandbox
-            Wants=network-online.target docker.service
-            After=network-online.target docker.service
-            ConditionPathExists=!/opt/sandbox/.bootstrapped
-
-            [Service]
-            Type=oneshot
-            ExecStartPre=/usr/bin/mkdir -p /usr/local/lib/docker/cli-plugins /opt/sandbox /opt/sandbox/.secrets /opt/sandbox/acme
-            ExecStartPre=/usr/bin/chown -R core:core /opt/sandbox
-            ExecStartPre=/usr/bin/chmod 700 /opt/sandbox/.secrets
-            ExecStart=/usr/bin/bash /opt/sandbox/run.sh
-            ExecStartPost=/usr/bin/touch /opt/sandbox/.bootstrapped
-            RemainAfterExit=yes
-
-            [Install]
-            WantedBy=multi-user.target
-          EOT
-        },
-        {
-          name    = "docker.service"
-          enabled = true
-        },
-        {
-          name    = "sandbox.service"
-          enabled = true
-        },
-        {
-          name    = "rake.timer"
-          enabled = true
-        }
-      ]
-    }
+  runtime_env = merge(local.base_env, local.workspace_env_overrides, {
+    ISLE_PASSWORD = var.isle_password
   })
+
+  acme_email          = trimspace(var.acme_email) != "" ? trimspace(var.acme_email) : trimspace(try(local.base_env.ACME_EMAIL, ""))
+  sitectl_context     = terraform.workspace
+  sitectl_environment = local.environment != null && local.environment.production ? "production" : "non-production"
+}
+
+moved {
+  from = module.environment["sandbox"].digitalocean_droplet.this
+  to   = module.cloud_compose["sandbox"].module.digitalocean.digitalocean_droplet.cloud_compose
+}
+
+moved {
+  from = module.environment["test"].digitalocean_droplet.this
+  to   = module.cloud_compose["test"].module.digitalocean.digitalocean_droplet.cloud_compose
 }
 
 resource "terraform_data" "workspace_guard" {
@@ -225,17 +94,72 @@ resource "terraform_data" "workspace_guard" {
   }
 }
 
-resource "digitalocean_custom_image" "coreos" {
-  count        = local.environment == null ? 0 : 1
-  name         = "fedora-coreos-${local.coreos_version}-${terraform.workspace}-${var.region}"
-  url          = "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/${local.coreos_version}/x86_64/fedora-coreos-${local.coreos_version}-digitalocean.x86_64.qcow2.gz"
-  regions      = [var.region]
-  description  = "Terraform-managed Fedora CoreOS image for the ${terraform.workspace} workspace"
-  distribution = "Fedora"
-  tags         = ["coreos", terraform.workspace]
+module "cloud_compose" {
+  for_each = local.environment == null ? {} : { (terraform.workspace) = local.environment }
+  source   = "https://github.com/libops/cloud-compose/archive/refs/tags/0.10.0.zip//cloud-compose-0.10.0/providers/do"
 
-  lifecycle {
-    create_before_destroy = true
+  name     = terraform.workspace
+  template = "isle"
+
+  digitalocean = {
+    region = var.region
+    tags   = ["cloud-compose", "islandora-sandbox", terraform.workspace]
+
+    droplet = {
+      size     = var.droplet_size
+      image    = var.droplet_image
+      ssh_keys = var.droplet_ssh_keys
+    }
+
+    ssh = {
+      cloud_compose_keys = var.ssh_keys
+    }
+
+    volumes = {
+      data_size_gb           = var.data_volume_size_gb
+      docker_volumes_size_gb = var.docker_volumes_volume_size_gb
+    }
+  }
+
+  runtime = {
+    rootfs = "${path.module}/rootfs"
+
+    compose = {
+      repo   = var.repo_url
+      branch = var.repo_branch
+      ingress = {
+        letsencrypt    = true
+        bot_mitigation = true
+        domain         = each.value.domain
+        acme_email     = local.acme_email
+      }
+      init = [
+        "grep -v '^ISLE_PASSWORD=' /home/cloud-compose/.env > .env",
+        "sitectl config set-context \"$${SITECTL_CONTEXT_NAME}\" --type local --project-dir \"$${DOCKER_COMPOSE_DIR}\" --site \"$${CLOUD_COMPOSE_INSTANCE_NAME}\" --plugin \"$${SITECTL_PLUGIN}\" --environment \"$${SITECTL_ENVIRONMENT}\" --project-name \"$${CLOUD_COMPOSE_INSTANCE_NAME}\" --compose-project-name \"$${COMPOSE_PROJECT_NAME}\" --docker-socket /var/run/docker.sock --env-file .env --default",
+        "if [ -n \"$${ISLE_PASSWORD:-}\" ]; then mkdir -p ./secrets; printf '%s' \"$${ISLE_PASSWORD}\" > ./secrets/ACTIVEMQ_WEB_ADMIN_PASSWORD; printf '%s' \"$${ISLE_PASSWORD}\" > ./secrets/DRUPAL_DEFAULT_ACCOUNT_PASSWORD; chmod 0600 ./secrets/ACTIVEMQ_WEB_ADMIN_PASSWORD ./secrets/DRUPAL_DEFAULT_ACCOUNT_PASSWORD; fi",
+        "sudo systemctl daemon-reload",
+        "sudo systemctl enable --now rake.timer",
+      ]
+      up = [
+        "if make -n demo-objects >/dev/null 2>&1; then GITHUB_ACTIONS=true TERM=xterm make init build demo-objects; else sitectl compose --context \"$${SITECTL_CONTEXT_NAME}\" up -d --remove-orphans; fi",
+        "sitectl healthcheck --context \"$${SITECTL_CONTEXT_NAME}\" --persist --timeout \"$${SITECTL_HEALTHCHECK_TIMEOUT}\" --interval \"$${SITECTL_HEALTHCHECK_INTERVAL}\"",
+        "if [ \"$${SITECTL_ENVIRONMENT}\" != \"production\" ]; then sitectl verify --context \"$${SITECTL_CONTEXT_NAME}\" $${SITECTL_VERIFY_ARGS:-}; fi",
+      ]
+    }
+
+    sitectl = {
+      context_name         = local.sitectl_context
+      environment          = local.sitectl_environment
+      healthcheck_timeout  = "20m"
+      healthcheck_interval = "15s"
+    }
+
+    managed_runtime = {
+      internal_services_enabled     = false
+      internal_services_auto_update = false
+    }
+
+    extra_env = local.runtime_env
   }
 
   depends_on = [terraform_data.workspace_guard]
@@ -245,11 +169,7 @@ module "environment" {
   for_each = local.environment == null ? {} : { (terraform.workspace) = local.environment }
   source   = "./modules/environment"
 
-  domain           = each.value.domain
-  droplet_name     = terraform.workspace
-  droplet_ssh_keys = var.droplet_ssh_keys
-  image_id         = digitalocean_custom_image.coreos[0].id
-  region           = var.region
-  size             = var.droplet_size
-  user_data        = local.ignition
+  domain     = each.value.domain
+  droplet_id = module.cloud_compose[each.key].instance_id
+  region     = var.region
 }

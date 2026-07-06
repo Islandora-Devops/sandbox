@@ -1,13 +1,17 @@
-name: Terraform Plan
+name: Terraform PR Test
 
 on:
   pull_request:
     branches:
       - main
 
+concurrency:
+  group: sandbox-terraform
+  cancel-in-progress: false
+
 jobs:
   terraform:
-    name: Terraform Plan
+    name: Deploy Test
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -25,6 +29,9 @@ jobs:
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
         with:
           terraform_version: 1.14.6
+
+      - name: Install lint tools
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
 
       - name: Lint Terraform and shell scripts
         run: make lint
@@ -55,7 +62,7 @@ jobs:
             const commentIdentifier = '<!-- terraform-plan-comment -->';
             const newCommentBody = `#### Terraform Plan
             ${commentIdentifier}
-            <details><summary>test workspace</summary>
+            <details open><summary>test workspace</summary>
 
             \`\`\`terraform
             ${process.env.TEST_PLAN || ''}
@@ -63,7 +70,7 @@ jobs:
 
             </details>
 
-            <details open><summary>sandbox workspace</summary>
+            <details><summary>sandbox workspace</summary>
 
             \`\`\`terraform
             ${process.env.SANDBOX_PLAN || ''}
@@ -84,3 +91,29 @@ jobs:
             } else {
               await github.rest.issues.createComment({ owner, repo, issue_number, body: newCommentBody });
             }
+
+      - name: Deploy and validate test
+        run: make deploy-test
+        env:
+          ISLE_PASSWORD: ${{ secrets.ISLE_PASSWORD }}
+
+      - name: Dump test logs on failure
+        if: failure()
+        env:
+          PACKER_SSH_KEY: ${{ secrets.PACKER_SSH_KEY }}
+        run: make dump-logs-test
+
+      - name: Upload test deployment artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: test-deployment-artifacts
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Clean up test compute
+        if: always()
+        run: make cleanup-test
+        env:
+          ISLE_PASSWORD: ${{ secrets.ISLE_PASSWORD }}

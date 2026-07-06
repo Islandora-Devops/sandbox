@@ -5,18 +5,13 @@ on:
     branches:
       - main
   workflow_dispatch:
-    inputs:
-      target:
-        description: Deployment target
-        required: true
-        type: choice
-        default: prod
-        options:
-          - prod
-          - promote
+
+concurrency:
+  group: sandbox-terraform
+  cancel-in-progress: false
 
 jobs:
-  promote:
+  deploy:
     name: Deploy Sandbox
     runs-on: ubuntu-24.04
     permissions:
@@ -35,29 +30,14 @@ jobs:
         with:
           terraform_version: 1.14.6
 
-      - name: Deploy and validate test
-        if: github.event_name == 'push' || inputs.target == 'promote'
-        run: make tf-test ACTION=apply
-        env:
-          ISLE_PASSWORD: ${{ secrets.ISLE_PASSWORD }}
+      - name: Install lint tools
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
 
-      - name: Upload test deployment artifacts
-        if: github.event_name == 'push' || inputs.target == 'promote'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: test-deployment-artifacts
-          path: artifacts/
-          if-no-files-found: warn
-          retention-days: 14
+      - name: Lint Terraform and shell scripts
+        run: make lint
 
       - name: Deploy and validate sandbox
-        run: make tf-prod ACTION=apply
-        env:
-          ISLE_PASSWORD: ${{ secrets.ISLE_PASSWORD }}
-
-      - name: Clean up test compute after sandbox promotion
-        if: github.event_name == 'push' || inputs.target == 'promote'
-        run: make tf-test ACTION=cleanup
+        run: make deploy-prod
         env:
           ISLE_PASSWORD: ${{ secrets.ISLE_PASSWORD }}
 
