@@ -11,9 +11,9 @@ CAPTCHA_SECRET=validation DOMAIN=example.org docker compose \
   python3 -c '
 import json, sys
 traefik = json.load(sys.stdin)["services"]["traefik"]
-assert "--entryPoints.https.http.middlewares=captcha-protect@docker" in traefik["command"]
+assert not any("http.middlewares=" in arg for arg in traefik["command"])
 assert "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=http" in traefik["command"]
-assert traefik["labels"]["traefik.http.middlewares.captcha-protect.plugin.captcha-protect.captchaProvider"] == "poj"
+assert traefik["environment"]["CAPTCHA_SECRET"] == "validation"
 mounts = {v["target"]: v for v in traefik["volumes"]}
 assert mounts["/acme"]["source"] == "/opt/sandbox/acme"
 assert mounts["/plugins-local/src/github.com/libops/captcha-protect"]["read_only"]

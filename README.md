@@ -133,10 +133,15 @@ installs the required host tools, clones [isle-site-template] and `libops/captch
 in `setup.sh`, copies `compose.override.yaml`, the generated `.env`, and secrets, then runs
 `make init build demo-objects` (which runs `make up`). The Compose override
 configures Let's Encrypt, persists ACME certificates in `/opt/sandbox/acme`, and
-mounts captcha-protect as a local Traefik plugin. All HTTPS routes use its
-proof-of-javascript challenge, signed with a secret generated during setup.
+mounts captcha-protect as a local Traefik plugin. Drupal, IIIF (Cantaloupe), and Fedora use child routers behind one HTTPS
+parent with a shared proof-of-javascript middleware instance. The file-provider
+configs replace the template routers, preserve their path rewrites, and use a
+challenge secret generated during setup.
 Validate the override against a local template checkout with
-`ci/check-compose.sh /path/to/isle-site-template`.
+`ci/check-compose.sh /path/to/isle-site-template`. Run
+`ci/check-protected-routing.py /path/to/captcha-protect` with Docker and a
+checkout of the pinned plugin to verify that Drupal, IIIF JSON/images, and
+Fedora requests all receive the parent challenge.
 
 The default droplet size is `s-4vcpu-8gb-amd`, matching the imported sandbox
 droplet. Override it with `TF_VAR_droplet_size` if DigitalOcean capacity requires

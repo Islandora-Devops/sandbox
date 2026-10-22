@@ -31,14 +31,8 @@ services:
       --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
       --certificatesresolvers.letsencrypt.acme.caserver=${ACME_URL}
       --experimental.localPlugins.captcha-protect.moduleName=github.com/libops/captcha-protect
-      --entryPoints.https.http.middlewares=captcha-protect@docker
-    labels:
-      traefik.enable: "true"
-      traefik.http.middlewares.captcha-protect.plugin.captcha-protect.captchaProvider: poj
-      traefik.http.middlewares.captcha-protect.plugin.captcha-protect.siteKey: sandbox
-      traefik.http.middlewares.captcha-protect.plugin.captcha-protect.secretKey: ${CAPTCHA_SECRET:?CAPTCHA_SECRET must be set}
-      traefik.http.middlewares.captcha-protect.plugin.captcha-protect.protectRoutes: /
-      traefik.http.middlewares.captcha-protect.plugin.captcha-protect.enableCommonCrawlIPCheck: "false"
+    environment:
+      CAPTCHA_SECRET: ${CAPTCHA_SECRET:?CAPTCHA_SECRET must be set}
     volumes:
       # Preserve certificates when the nightly reset removes Docker volumes.
       - /opt/sandbox/acme:/acme:rw

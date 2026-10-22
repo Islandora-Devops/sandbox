@@ -62,6 +62,8 @@ git -C ./captcha-protect checkout --detach FETCH_HEAD
 cp /opt/sandbox/.env .
 printf 'CAPTCHA_SECRET=%s\n' "$(cat /proc/sys/kernel/random/uuid)" >> .env
 cp /opt/sandbox/compose.override.yaml .
+# Replace the template routers so no standalone route can bypass the parent.
+cp /opt/sandbox/traefik/*.yml ./conf/traefik/
 
 mkdir -p ./secrets
 cp /opt/sandbox/.secrets/ACTIVEMQ_WEB_ADMIN_PASSWORD ./secrets/ACTIVEMQ_WEB_ADMIN_PASSWORD
