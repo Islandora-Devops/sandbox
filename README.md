@@ -129,9 +129,14 @@ non-destroy actions, and then runs the requested Terraform action.
 Terraform reads the base environment from [.env](./.env) and writes
 workspace-specific `DOMAIN` and `TAG` values into the VM Ignition payload.
 During VM bootstrap, [rootfs/opt/sandbox/setup.sh](./rootfs/opt/sandbox/setup.sh)
-installs the required host tools, clones [isle-site-template], enables the
-`bot-mitigation` component, copies the generated `.env` and secrets, then runs
-`make init build demo-objects`.
+installs the required host tools, clones [isle-site-template] and `libops/captcha-protect` at the pinned release
+in `setup.sh`, copies `compose.override.yaml`, the generated `.env`, and secrets, then runs
+`make init build demo-objects` (which runs `make up`). The Compose override
+configures Let's Encrypt, persists ACME certificates in `/opt/sandbox/acme`, and
+mounts captcha-protect as a local Traefik plugin. All HTTPS routes use its
+proof-of-javascript challenge, signed with a secret generated during setup.
+Validate the override against a local template checkout with
+`ci/check-compose.sh /path/to/isle-site-template`.
 
 The default droplet size is `s-4vcpu-8gb-amd`, matching the imported sandbox
 droplet. Override it with `TF_VAR_droplet_size` if DigitalOcean capacity requires
