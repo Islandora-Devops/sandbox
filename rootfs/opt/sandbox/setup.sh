@@ -10,17 +10,6 @@ DOCKER_BUILDX_VERSION=v0.35.0
 # shellcheck disable=SC1091
 source /opt/sandbox/profile.sh
 
-install -d /etc/yum.repos.d
-cat >/etc/yum.repos.d/sitectl.repo <<'EOF'
-[sitectl]
-name=sitectl
-baseurl=https://packages.libops.io/sitectl/rpm
-enabled=1
-gpgcheck=0
-repo_gpgcheck=1
-gpgkey=https://packages.libops.io/sitectl/sitectl-archive-keyring.asc
-EOF
-
 # Install docker-compose (replaces install-docker-compose.service)
 if [ ! -f "/usr/local/lib/docker/cli-plugins/docker-compose" ]; then
   mkdir -p /usr/local/lib/docker/cli-plugins
@@ -43,9 +32,6 @@ packages=()
 if [ ! -f /usr/bin/make ]; then
   packages+=(make)
 fi
-if ! rpm -q sitectl-isle >/dev/null 2>&1; then
-  packages+=(sitectl-isle)
-fi
 if [ "${#packages[@]}" -gt 0 ]; then
   rpm-ostree install --apply-live "${packages[@]}"
 fi
@@ -63,17 +49,21 @@ fi
 
 pushd /opt/sandbox/isle-site-template
 export HOME=/var/home/core
-sitectl config set-context sandbox \
-  --type local \
-  --plugin isle \
-  --project-dir /opt/sandbox/isle-site-template \
-  --project-name sandbox
-
-sitectl component set bot-mitigation on --yolo
-sitectl component set isle-tls enabled --tls-mode letsencrypt --yolo
+# renovate: datasource=github-releases depName=libops/captcha-protect
+CAPTCHA_PROTECT_VERSION=v1.15.1
+if [ ! -d ./captcha-protect ]; then
+  retry_until_success git clone --depth 1 --branch "$CAPTCHA_PROTECT_VERSION" \
+    https://github.com/libops/captcha-protect.git ./captcha-protect
+fi
+# Keep reruns on the configured release even when the pin changes.
+retry_until_success git -C ./captcha-protect fetch --depth 1 origin "refs/tags/$CAPTCHA_PROTECT_VERSION"
+git -C ./captcha-protect checkout --detach FETCH_HEAD
 
 cp /opt/sandbox/.env .
-cp /opt/sandbox/docker-compose.override.yml .
+printf 'CAPTCHA_SECRET=%s\n' "$(cat /proc/sys/kernel/random/uuid)" >> .env
+cp /opt/sandbox/compose.override.yaml .
+# Replace the template routers so no standalone route can bypass the parent.
+cp /opt/sandbox/traefik/*.yml ./conf/traefik/
 
 mkdir -p ./secrets
 cp /opt/sandbox/.secrets/ACTIVEMQ_WEB_ADMIN_PASSWORD ./secrets/ACTIVEMQ_WEB_ADMIN_PASSWORD

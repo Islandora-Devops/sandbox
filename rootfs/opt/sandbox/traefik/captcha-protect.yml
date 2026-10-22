@@ -1,0 +1,23 @@
+http:
+  routers:
+    captcha-protected:
+      entryPoints:
+        - https
+      rule: Host(`{{ env "DOMAIN" }}`) || Host(`fcrepo.{{ env "DOMAIN" }}`)
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - captcha-protect
+  middlewares:
+    captcha-protect:
+      plugin:
+        captcha-protect:
+          captchaProvider: poj
+          challengeTmpl: /plugins-local/src/github.com/libops/captcha-protect/challenge.tmpl.html
+          siteKey: sandbox
+          secretKey: '{{ env "CAPTCHA_SECRET" }}'
+          protectAllExtensions: "true"
+          protectParameters: "true"
+          protectRoutes:
+            - /
+          enableCommonCrawlIPCheck: "false"
