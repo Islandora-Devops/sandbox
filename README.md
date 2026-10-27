@@ -9,7 +9,7 @@
 - [Provisioning](#provisioning)
 - [CI/CD Workflow](#cicd-workflow)
 - [Local Debugging](#local-debugging)
-- [Nightly Refresh](#nightly-refresh)
+- [Sandbox Maintenance](#sandbox-maintenance)
 - [Domains](#domains)
 
 ## Introduction
@@ -198,22 +198,32 @@ make tf-test ACTION=cleanup
 workspace, including `test.islandora.ca` DNS and the test reserved IP. Use
 `make destroy-test` only when intentionally removing those shared resources.
 
-## Nightly Refresh
+## Sandbox Maintenance
 
-The sandbox application/data state is refreshed nightly inside the VM by
-systemd. This is not a Terraform droplet recreation.
+There is no nightly reset. Renovate dependency updates trigger deployments that
+replace the VM; these replacements provide the regular refresh of demo content.
+Rebooting the VM preserves Docker volumes and starts the existing containers.
 
-- [rake.timer](./rootfs/etc/systemd/system/rake.timer) runs every day at
-  `1:00 America/Halifax`.
-- [rake.service](./rootfs/etc/systemd/system/rake.service) restarts
-  `sandbox.service`.
-- [sandbox.service](./rootfs/etc/systemd/system/sandbox.service) runs
-  `docker compose down -v` before startup and shutdown, then runs
-  `make demo-objects`.
+For on-demand recovery, open **Actions → Sandbox Maintenance → Run workflow**
+on the default branch and select an operation:
 
-The result is a nightly reset of the ISLE demo content and containers while the
-DigitalOcean droplet, reserved IP, DNS records, and Terraform state remain
-managed by Terraform.
+- **reset** runs `docker compose down -v` followed by `make demo-objects` as
+  `core` in `/opt/sandbox/isle-site-template`. This deletes all demo data in
+  Docker volumes and rebuilds the demo objects. Expect downtime during the reset.
+- **reboot** requests a reboot through the DigitalOcean API, so it also works
+  when SSH is unresponsive. Completion means the reboot was accepted; allow
+  time for the VM and application to start.
+
+The workflow targets only the production sandbox. Reset requires the repository
+secret `PACKER_SSH_KEY` containing a private key authorized for `core` on the VM.
+Reboot uses the existing `DIGITALOCEAN_API_TOKEN` secret and requires exactly one
+DigitalOcean droplet named `sandbox`. Maintenance runs are serialized; avoid
+running maintenance during a Terraform deployment. After either operation,
+verify the site with `make health-check-prod`.
+
+Removing the timer takes effect when Terraform next replaces the VM. To stop
+nightly resets on an existing VM before replacement, run
+`sudo systemctl disable --now rake.timer` on that VM.
 
 ## Domains
 
