@@ -6,5 +6,3 @@ set -eou pipefail
 source /opt/sandbox/profile.sh
 
 bash /opt/sandbox/setup.sh
-
-systemctl start rake.timer

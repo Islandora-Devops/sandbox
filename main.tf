@@ -204,10 +204,6 @@ locals {
         {
           name    = "sandbox.service"
           enabled = true
-        },
-        {
-          name    = "rake.timer"
-          enabled = true
         }
       ]
     }

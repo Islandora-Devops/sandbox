@@ -1,0 +1,60 @@
+name: Sandbox Maintenance
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'reset deletes demo data; reboot preserves it'
+        required: true
+        type: choice
+        default: reboot
+        options:
+          - reset
+          - reboot
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sandbox-maintenance
+  cancel-in-progress: false
+
+jobs:
+  maintenance:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Reset sandbox demo data
+        if: inputs.operation == 'reset'
+        env:
+          PACKER_SSH_KEY: ${{ secrets.PACKER_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          key_file="$(mktemp)"
+          trap 'rm -f "$key_file"' EXIT
+          printf '%s\n' "${PACKER_SSH_KEY:?PACKER_SSH_KEY must be set}" > "$key_file"
+          chmod 600 "$key_file"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+            -i "$key_file" core@sandbox.islandora.ca \
+            'set -eu; cd /opt/sandbox/isle-site-template; export TERM=xterm GITHUB_ACTIONS=true; docker compose down -v; make demo-objects'
+
+      - name: Reboot sandbox through DigitalOcean
+        if: inputs.operation == 'reboot'
+        env:
+          DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          droplets=$(curl --fail-with-body --silent --show-error --max-time 60 \
+            -H "Authorization: Bearer ${DIGITALOCEAN_TOKEN:?DIGITALOCEAN_TOKEN must be set}" \
+            'https://api.digitalocean.com/v2/droplets?name=sandbox&per_page=200')
+          droplet_id=$(jq -er '[.droplets[] | select(.name == "sandbox")] |
+            if length == 1 then .[0].id else error("Expected exactly one sandbox droplet") end' <<< "$droplets")
+          curl --fail-with-body --silent --show-error --max-time 60 \
+            -X POST -H "Authorization: Bearer ${DIGITALOCEAN_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            -d '{"type":"reboot"}' \
+            "https://api.digitalocean.com/v2/droplets/${droplet_id}/actions"
