@@ -1,6 +1,0 @@
-services:
-  traefik:
-    volumes:
-      # the sandbox gets rebuilt every night
-      # so persist ACME certs outside the docker volumes that get only have a 1d lifecycle
-      - /opt/sandbox/acme:/acme:rw
