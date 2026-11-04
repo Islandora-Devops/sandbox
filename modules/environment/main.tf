@@ -36,13 +36,12 @@ resource "digitalocean_record" "wildcard_cname" {
 }
 
 resource "digitalocean_droplet" "this" {
-  name       = var.droplet_name
-  region     = var.region
-  size       = var.size
-  image      = var.image_id
-  ssh_keys   = var.droplet_ssh_keys
-  user_data  = var.user_data
-  monitoring = true
+  name      = var.droplet_name
+  region    = var.region
+  size      = var.size
+  image     = var.image_id
+  ssh_keys  = var.droplet_ssh_keys
+  user_data = var.user_data
 
   lifecycle {
     create_before_destroy = true
