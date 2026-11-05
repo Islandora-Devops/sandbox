@@ -5,15 +5,11 @@ on:
     branches:
       - main
   workflow_dispatch:
-    inputs:
-      target:
-        description: Deployment target
-        required: true
-        type: choice
-        default: prod
-        options:
-          - prod
-          - promote
+
+concurrency:
+  group: terraform-apply
+  cancel-in-progress: false
+  queue: max
 
 jobs:
   promote:
@@ -35,31 +31,11 @@ jobs:
         with:
           terraform_version: v1.17.1
 
-      - name: Deploy and validate test
-        if: github.event_name == 'push' || inputs.target == 'promote'
-        run: make tf-test ACTION=apply
-        env:
-          ISLE_PASSWORD: ${{ secrets.ISLE_PASSWORD }}
-
-      - name: Upload test deployment artifacts
-        if: github.event_name == 'push' || inputs.target == 'promote'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: test-deployment-artifacts
-          path: artifacts/
-          if-no-files-found: warn
-          retention-days: 14
-
       - name: Deploy and validate sandbox
         run: make tf-prod ACTION=apply
         env:
           ISLE_PASSWORD: ${{ secrets.ISLE_PASSWORD }}
-
-      - name: Clean up test compute after sandbox promotion
-        if: github.event_name == 'push' || inputs.target == 'promote'
-        run: make tf-test ACTION=cleanup
-        env:
-          ISLE_PASSWORD: ${{ secrets.ISLE_PASSWORD }}
+          PACKER_SSH_KEY: ${{ secrets.PACKER_SSH_KEY }}
 
       - name: Dump logs on failure
         if: failure()

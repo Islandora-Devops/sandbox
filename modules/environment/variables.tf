@@ -33,3 +33,15 @@ variable "user_data" {
   description = "Rendered Ignition payload for the droplet"
   sensitive   = true
 }
+
+variable "slots" {
+  type = list(string)
+}
+
+variable "active_slot" {
+  type = string
+}
+
+variable "deployment_hash" {
+  type = string
+}

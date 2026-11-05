@@ -35,20 +35,27 @@ resource "digitalocean_record" "wildcard_cname" {
   ttl    = 900
 }
 
+moved {
+  from = digitalocean_droplet.this
+  to   = digitalocean_droplet.this["blue"]
+}
+
 resource "digitalocean_droplet" "this" {
-  name      = var.droplet_name
+  for_each  = toset(var.slots)
+  name      = "${var.droplet_name}-${each.key}"
   region    = var.region
   size      = var.size
   image     = var.image_id
   ssh_keys  = var.droplet_ssh_keys
   user_data = var.user_data
+  tags      = ["deployment-${var.deployment_hash}"]
 
   lifecycle {
-    create_before_destroy = true
+    ignore_changes = all
   }
 }
 
 resource "digitalocean_reserved_ip_assignment" "this" {
   ip_address = digitalocean_reserved_ip.this.ip_address
-  droplet_id = digitalocean_droplet.this.id
+  droplet_id = digitalocean_droplet.this[var.active_slot].id
 }

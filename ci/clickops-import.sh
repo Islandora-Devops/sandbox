@@ -5,6 +5,7 @@ set -euo pipefail
 # terraform import evaluates the full config, so required variables still need
 # values even when they are not part of the imported resource.
 export TF_VAR_isle_password="${TF_VAR_isle_password:-placeholder}"
+export TF_VAR_packer_ssh_public_key="${TF_VAR_packer_ssh_public_key:-placeholder}"
 
 : "${DIGITALOCEAN_TOKEN:?DIGITALOCEAN_TOKEN must be set}"
 : "${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID must be set}"
@@ -13,7 +14,6 @@ export SPACES_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID"
 export SPACES_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"
 
 sandbox_ip="${SANDBOX_RESERVED_IP:-159.203.49.92}"
-test_ip="${TEST_RESERVED_IP:-174.138.112.33}"
 
 select_workspace() {
   local workspace="$1"
@@ -62,7 +62,6 @@ import_if_present() {
 echo "Fetching domain records..."
 islandora_records="$(doctl compute domain records list islandora.ca --output json)"
 sandbox_records="$(doctl compute domain records list sandbox.islandora.ca --output json)"
-test_records="$(doctl compute domain records list test.islandora.ca --output json)"
 
 echo "Importing sandbox workspace resources..."
 select_workspace sandbox
@@ -77,7 +76,7 @@ import_if_present 'module.environment["sandbox"].digitalocean_domain.this' 'sand
 import_if_present 'module.environment["sandbox"].digitalocean_reserved_ip.this' "$sandbox_ip"
 import_if_present 'module.environment["sandbox"].digitalocean_record.root_a' "sandbox.islandora.ca,$(rid "$sandbox_records" A @)"
 import_if_present 'module.environment["sandbox"].digitalocean_record.wildcard_cname' "sandbox.islandora.ca,$(rid "$sandbox_records" CNAME '*')"
-import_if_present 'module.environment["sandbox"].digitalocean_droplet.this' "$sandbox_droplet_id"
+import_if_present 'module.environment["sandbox"].digitalocean_droplet.this["blue"]' "$sandbox_droplet_id"
 import_if_present 'module.environment["sandbox"].digitalocean_reserved_ip_assignment.this' "${sandbox_ip},${sandbox_droplet_id}"
 
 import_if_present 'digitalocean_domain.islandora_ca[0]' 'islandora.ca'
@@ -110,20 +109,5 @@ import_if_present 'digitalocean_record.islandora_ca_txt_dkim_google[0]' "islando
 import_if_present 'digitalocean_record.islandora_ca_txt_domainkey[0]' "islandora.ca,$(rid "$islandora_records" TXT _domainkey)"
 import_if_present 'digitalocean_record.islandora_ca_txt_google_verify[0]' "islandora.ca,$(rid_data "$islandora_records" TXT @ 'google-site-verification=WC57eo9SoIqzU8qHIOhZuEcS-Wj5WTvDju-accRLNCY')"
 import_if_present 'digitalocean_record.islandora_ca_txt_spf[0]' "islandora.ca,$(rid_data "$islandora_records" TXT @ 'v=spf1 +a +mx +a:us170.siteground.us include:_spf.mailspamprotection.com ~all')"
-
-echo "Importing test workspace resources..."
-select_workspace test
-
-test_image_name="${TEST_COREOS_IMAGE_NAME:-fedora-coreos-43.20260217.3.1-test-${TF_VAR_region:-tor1}}"
-test_image_id="$(image_id_by_name "$test_image_name")"
-test_droplet_id="$(droplet_id_by_name test)"
-
-import_if_present 'digitalocean_custom_image.coreos[0]' "$test_image_id"
-import_if_present 'module.environment["test"].digitalocean_domain.this' 'test.islandora.ca'
-import_if_present 'module.environment["test"].digitalocean_reserved_ip.this' "$test_ip"
-import_if_present 'module.environment["test"].digitalocean_record.root_a' "test.islandora.ca,$(rid "$test_records" A @)"
-import_if_present 'module.environment["test"].digitalocean_record.wildcard_cname' "test.islandora.ca,$(rid "$test_records" CNAME '*')"
-import_if_present 'module.environment["test"].digitalocean_droplet.this' "$test_droplet_id"
-import_if_present 'module.environment["test"].digitalocean_reserved_ip_assignment.this' "${test_ip},${test_droplet_id}"
 
 echo "Imports complete."

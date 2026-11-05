@@ -39,19 +39,10 @@ resource "digitalocean_spaces_bucket" "terraform_state" {
 }
 
 locals {
-  supported_workspaces = {
-    sandbox = {
-      domain             = var.sandbox_domain
-      manages_shared_dns = true
-    }
-    test = {
-      domain             = var.test_domain
-      manages_shared_dns = false
-    }
-  }
-
-  environment       = try(local.supported_workspaces[terraform.workspace], null)
-  manage_shared_dns = local.environment != null && local.environment.manages_shared_dns
+  environment = terraform.workspace == "sandbox" ? {
+    domain = var.sandbox_domain
+  } : null
+  manage_shared_dns = local.environment != null
 
   # renovate: datasource=custom.fedora-coreos packageName=stable versioning=loose
   coreos_version = "44.20261023.3.1"
@@ -141,7 +132,7 @@ locals {
         {
           name              = "core"
           groups            = ["docker"]
-          sshAuthorizedKeys = var.ssh_keys
+          sshAuthorizedKeys = distinct(concat(var.ssh_keys, var.github_ssh_keys, [var.packer_ssh_public_key]))
         }
       ]
     }
@@ -186,9 +177,11 @@ locals {
 
             [Service]
             Type=oneshot
+            TimeoutStartSec=infinity
             ExecStartPre=/usr/bin/mkdir -p /usr/local/lib/docker/cli-plugins /opt/sandbox /opt/sandbox/.secrets /opt/sandbox/acme
             ExecStartPre=/usr/bin/chown -R core:core /opt/sandbox
             ExecStartPre=/usr/bin/chmod 700 /opt/sandbox/.secrets
+            ExecStartPre=/usr/bin/bash -c 'until test -f /opt/sandbox/acme/.ready; do sleep 5; done'
             ExecStart=/usr/bin/bash /opt/sandbox/run.sh
             ExecStartPost=/usr/bin/touch /opt/sandbox/.bootstrapped
             RemainAfterExit=yes
@@ -216,13 +209,13 @@ resource "terraform_data" "workspace_guard" {
   lifecycle {
     precondition {
       condition     = local.environment != null
-      error_message = "Unsupported Terraform workspace \"${terraform.workspace}\". Supported workspaces: sandbox, test."
+      error_message = "Unsupported Terraform workspace \"${terraform.workspace}\". Supported workspace: sandbox."
     }
   }
 }
 
 resource "digitalocean_custom_image" "coreos" {
-  count        = local.environment == null ? 0 : 1
+  count        = terraform.workspace == "sandbox" ? 1 : 0
   name         = "fedora-coreos-${local.coreos_version}-${terraform.workspace}-${var.region}"
   url          = "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/${local.coreos_version}/x86_64/fedora-coreos-${local.coreos_version}-digitalocean.x86_64.qcow2.gz"
   regions      = [var.region]
@@ -248,4 +241,22 @@ module "environment" {
   region           = var.region
   size             = var.droplet_size
   user_data        = local.ignition
+  slots            = var.sandbox_slots
+  active_slot      = var.sandbox_active_slot
+  deployment_hash  = local.deployment_hash
+}
+
+locals {
+  deployment_hash = nonsensitive(sha256(jsonencode({
+    ignition         = local.ignition
+    coreos_version   = local.coreos_version
+    region           = var.region
+    size             = coalesce(var.deployment_requested_size, var.droplet_size)
+    droplet_ssh_keys = var.droplet_ssh_keys
+    deploy_ssh_key   = var.packer_ssh_public_key
+  })))
+}
+
+output "deployment_hash" {
+  value = local.deployment_hash
 }
