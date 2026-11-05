@@ -42,6 +42,12 @@ if [[ -z "$browser" || ! ( -x "$browser" || -n "$(command -v "$browser" 2>/dev/n
 fi
 
 echo "Waiting up to ${timeout_seconds}s for ${url} to become available..."
+browser_resolve=()
+if [[ -n "${HEALTH_CHECK_IP:-}" ]]; then
+  host="${url#*://}"
+  host="${host%%/*}"
+  browser_resolve=("--host-resolver-rules=MAP ${host} ${HEALTH_CHECK_IP}" --no-proxy-server)
+fi
 while true; do
   "$browser" \
     --headless \
@@ -50,6 +56,7 @@ while true; do
     --no-default-browser-check \
     --no-first-run \
     --no-sandbox \
+    ${browser_resolve[@]+"${browser_resolve[@]}"} \
     --user-data-dir="$profile_dir" \
     "$url" >/dev/null 2>&1 &
   browser_pid="$!"

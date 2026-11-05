@@ -20,4 +20,5 @@ http:
           protectParameters: "true"
           protectRoutes:
             - /
-          enableCommonCrawlIPCheck: "false"
+          enableUptimeRobotBypass: "true"
+

@@ -15,8 +15,15 @@ if [[ "${#node_ids[@]}" -eq 0 ]]; then
   exit 1
 fi
 
+curl_args=()
+if [[ -n "${HEALTH_CHECK_IP:-}" ]]; then
+  host="${url#*://}"
+  host="${host%%/*}"
+  curl_args=(--noproxy '*' --resolve "${host}:443:${HEALTH_CHECK_IP}")
+fi
+
 for nid in "${node_ids[@]}"; do
-  response="$(curl -sf "${url}/node/${nid}?_format=json" 2>/dev/null)" || {
+  response="$(curl -sf ${curl_args[@]+"${curl_args[@]}"} "${url}/node/${nid}?_format=json" 2>/dev/null)" || {
     echo "Node ${nid} is not available at ${url}" >&2
     exit 1
   }

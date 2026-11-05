@@ -21,18 +21,12 @@ host, and [isle-site-template] provides the Islandora application stack.
 
 The same pattern can be adapted to other providers: define the cloud primitives
 in Terraform, bootstrap the VM with the ISLE site template, validate expected
-Islandora content after deployment, and promote only after the test deployment
-passes.
+Islandora content after deployment.
 
 For the live Islandora sandbox, provisioned VMs clone
 `https://github.com/Islandora-Devops/isle-site-template` from the `main` branch
-by default. The Terraform root is workspace-driven:
-
-- `test` manages the review environment at `test.islandora.ca`
-- `sandbox` manages the long-lived environment at `sandbox.islandora.ca`
-
-The shared parent `islandora.ca` zone remains managed from the `sandbox`
-workspace so there is only one writer for the shared DNS records.
+by default. The Terraform root uses the `sandbox` workspace for the live
+sandbox and shared parent DNS records.
 
 ## Requirements
 
@@ -91,25 +85,27 @@ exactly the same entry points:
 
 - [Makefile](./Makefile) provides the public commands.
 - [ci/deploy-local.sh](./ci/deploy-local.sh) is the shared Terraform runner used by local operators and GitHub Actions.
-- [ci/select-region.sh](./ci/select-region.sh) chooses the first candidate DigitalOcean region where the requested droplet size is currently available.
-- [ci/screenshot.sh](./ci/screenshot.sh) captures the review screenshot.
-- [ci/fetch-json.sh](./ci/fetch-json.sh) fetches and pretty-prints the JSON-LD check used in the PR comment.
 - [ci/health-check.sh](./ci/health-check.sh) and [ci/check-nodes.sh](./ci/check-nodes.sh) validate that the expected Drupal nodes exist before a deployment is considered healthy.
-- [main.tf](./main.tf) manages the Fedora CoreOS image as a `digitalocean_custom_image` with `create_before_destroy = true`, so image replacement happens safely under Terraform control.
+- [main.tf](./main.tf) manages the Fedora CoreOS image in the sandbox workspace.
 
 The main local provisioning commands are:
 
 ```bash
-make tf-test ACTION=plan
-make tf-test ACTION=apply
 make tf-prod ACTION=plan
 make tf-prod ACTION=apply
-make tf-test ACTION=cleanup
 ```
 
-`make tf-test ACTION=cleanup` is the normal teardown path for test runs. It
-destroys only ephemeral test compute resources and keeps the `test.islandora.ca`
-DNS zone and reserved IP in Terraform state.
+When the deployment configuration changes, apply creates the inactive blue or green VM, waits for bootstrap, copies the
+live Traefik ACME store, and validates required nodes through the candidate's
+own IP. It then moves the reserved IP, validates the live endpoint, and removes
+the old VM. Set `PACKER_SSH_KEY` to the private key used for new VMs. If that
+key cannot access the live VM, deployment retries with the default SSH identity.
+Deployments add its public key and the public keys published by the GitHub
+accounts in the [Islandora committer list](https://islandora.github.io/documentation/contributing/committers/#committers)
+to new VMs. The list and keys are fetched for each plan and apply.
+Candidate bootstrap has a separate one-hour timeout, configurable with
+`BOOTSTRAP_TIMEOUT_SECONDS`.
+On failure, the deploy captures available logs and attempts to remove the inactive VM. If the reserved IP owner cannot be identified or cleanup fails, inspect the VMs and retry cleanup.
 
 Run local checks before opening or updating a PR:
 
@@ -120,12 +116,9 @@ make lint
 This checks Terraform formatting, validates the main and bootstrap Terraform
 roots, and runs ShellCheck against all `*.sh` scripts.
 
-`ACTION` defaults to `plan`, so `make tf-test` and `make tf-prod` are shorthand
-for planning the test and production workspaces. The deploy script initializes
-the remote Spaces backend, selects the Terraform workspace, selects an available
-DigitalOcean region for test unless `TF_VAR_region` is already set, pins
-production to `SANDBOX_REGION` or `tor1` by default, validates Terraform for
-non-destroy actions, and then runs the requested Terraform action.
+`ACTION` defaults to `plan`. The deploy script initializes the remote Spaces
+backend, selects the sandbox workspace, uses `TF_VAR_region`, `SANDBOX_REGION`,
+or `tor1`, validates Terraform, and runs the requested action.
 Terraform reads the base environment from [.env](./.env) and writes
 workspace-specific `DOMAIN` and `TAG` values into the VM Ignition payload.
 During VM bootstrap, [rootfs/opt/sandbox/setup.sh](./rootfs/opt/sandbox/setup.sh)
@@ -144,8 +137,10 @@ checkout of the pinned plugin to verify that Drupal, IIIF JSON/images, and
 Fedora requests all receive the parent challenge.
 
 The default droplet size is `s-4vcpu-8gb-amd`, matching the imported sandbox
-droplet. Override it with `TF_VAR_droplet_size` if DigitalOcean capacity requires
-a different slug.
+droplet. If DigitalOcean reports that size is unavailable in the reserved IP's
+region, deployment retries with `s-4vcpu-8gb`. Override the preferred size with
+`TF_VAR_droplet_size` and the space-separated fallback list with
+`DIGITALOCEAN_FALLBACK_SIZES`. Availability can still change between retries.
 
 The site repository and branch can be overridden with Terraform variables, but
 the defaults should normally be used:
@@ -159,44 +154,14 @@ TF_VAR_repo_branch=main
 
 The GitHub workflows also go through the same `make` and `ci/*.sh` paths:
 
-- Pull requests run plans for both workspaces in [terraform-plan.yml](./.github/workflows/terraform-plan.yml), then post or update a sticky PR comment with the `test` and `sandbox` Terraform plans.
-- Pull request pushes do not run Terraform apply.
-- Pushes to `main` run `make tf-test ACTION=apply`, then `make tf-prod ACTION=apply`, then `make tf-test ACTION=cleanup`. Production only starts after the test deploy and required-node checks pass.
-- Test cleanup destroys only ephemeral test compute resources: the test droplet, reserved IP assignment, CoreOS image, and workspace guard. The `test.islandora.ca` DNS zone and reserved IP remain managed in Terraform state.
+- Pull requests plan the sandbox workspace and post the plan in a PR comment.
+- Pushes to `main` validate the candidate before applying the sandbox cutover.
 
 ## Local Debugging
 
-Local debugging follows the same path as CI. Export these local environment
-variables:
-
-```bash
-export AWS_ACCESS_KEY_ID="..."
-export AWS_SECRET_ACCESS_KEY="..."
-export DIGITALOCEAN_TOKEN="..."
-export ISLE_PASSWORD="..."
-
-make tf-test ACTION=apply
-make tf-prod ACTION=apply
-make tf-test ACTION=cleanup
-```
-
-Use the `make tf-*` targets for local operator work instead of raw Terraform
-commands. The targets supply the same environment, region selection, validation,
-and health-check behavior used in GitHub Actions.
-
-If you only want a single operation, use the narrower targets:
-
-```bash
-make tf-test ACTION=plan
-make tf-prod ACTION=plan
-make tf-test ACTION=apply
-make tf-prod ACTION=apply
-make tf-test ACTION=cleanup
-```
-
-`make tf-test ACTION=destroy` is guarded because it removes the entire test
-workspace, including `test.islandora.ca` DNS and the test reserved IP. Use
-`make destroy-test` only when intentionally removing those shared resources.
+Export `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `DIGITALOCEAN_TOKEN`,
+`ISLE_PASSWORD`, and `PACKER_SSH_KEY`, then run `make tf-prod ACTION=plan` or
+`make tf-prod ACTION=apply`. The same entry points are used by GitHub Actions.
 
 ## Sandbox Maintenance
 
@@ -227,8 +192,8 @@ nightly resets on an existing VM before replacement, run
 
 ## Domains
 
-The delegated `test.islandora.ca` and `sandbox.islandora.ca` zones are managed
-by the shared environment module in [modules/environment/main.tf](./modules/environment/main.tf).
+The `sandbox.islandora.ca` zone is managed
+by the environment module in [modules/environment/main.tf](./modules/environment/main.tf).
 The parent `islandora.ca` records live in [dns-islandora-ca.tf](./dns-islandora-ca.tf).
 DNS records for these zones should be changed in Terraform and reviewed through
 pull requests, not edited directly in the DigitalOcean UI. If an emergency
@@ -237,20 +202,15 @@ before the next apply so Terraform remains the source of truth.
 
 ## Bootstrapping
 
-Existing DigitalOcean resources were brought under Terraform management with
-[ci/clickops-import.sh](./ci/clickops-import.sh). The script imports resources into both
-Terraform workspaces:
+Existing DigitalOcean resources can be brought under Terraform management with
+[ci/clickops-import.sh](./ci/clickops-import.sh) in the sandbox workspace.
+Terraform moves the original droplet state into the blue slot automatically.
 
-- `sandbox` imports `sandbox.islandora.ca`, the production reserved IP, the
-  droplet named `sandbox`, sandbox DNS records, shared `islandora.ca` DNS
-  records, the `sandbox-terraform-state` Spaces bucket, and the CoreOS image if
-  one matching the configured name exists.
-- `test` imports `test.islandora.ca`, the test reserved IP, the droplet named
-  `test` if present, test DNS records, and the CoreOS image if one matching the
-  configured name exists.
-
-The shared parent `islandora.ca` zone is imported only in the `sandbox`
-workspace because that workspace is the only Terraform writer for shared DNS.
+The former test workspace is no longer used by deployment. Its existing resources
+and remote state are not deleted by this change; inspect and retire them
+separately when appropriate. If the image was already moved to test state by an
+intermediate deployment, migrate its state ownership before applying sandbox;
+do not manage the same image in two states.
 
 Before importing, create GitHub Actions repository secrets:
 
@@ -294,29 +254,14 @@ terraform init -upgrade
 for the state bucket to have been created by `make bootstrap-state` before the
 import.
 
-The script defaults to the existing reserved IPs:
-
-```bash
-SANDBOX_RESERVED_IP=159.203.49.92
-TEST_RESERVED_IP=174.138.112.33
-```
-
-Override them when running the import if DigitalOcean has different addresses:
-
-```bash
-SANDBOX_RESERVED_IP="..." TEST_RESERVED_IP="..." ./ci/clickops-import.sh
-```
-
-After importing, verify drift in both workspaces before applying:
+The script defaults to `SANDBOX_RESERVED_IP=159.203.49.92`; override it if
+DigitalOcean has a different address. After importing, inspect the sandbox state
+and plan before applying:
 
 ```bash
 terraform workspace select sandbox
 terraform state list
-terraform plan
-
-terraform workspace select test
-terraform state list
-terraform plan
+make tf-prod ACTION=plan
 ```
 
 [DigitalOcean]: https://www.digitalocean.com/

@@ -16,8 +16,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: sandbox-maintenance
+  group: terraform-apply
   cancel-in-progress: false
+  queue: max
 
 jobs:
   maintenance:
@@ -50,9 +51,9 @@ jobs:
           set -euo pipefail
           droplets=$(curl --fail-with-body --silent --show-error --max-time 60 \
             -H "Authorization: Bearer ${DIGITALOCEAN_TOKEN:?DIGITALOCEAN_TOKEN must be set}" \
-            'https://api.digitalocean.com/v2/droplets?name=sandbox&per_page=200')
-          droplet_id=$(jq -er '[.droplets[] | select(.name == "sandbox")] |
-            if length == 1 then .[0].id else error("Expected exactly one sandbox droplet") end' <<< "$droplets")
+            'https://api.digitalocean.com/v2/droplets?per_page=200')
+          droplet_id=$(jq -er '[.droplets[] | select(.name == "sandbox" or .name == "sandbox-blue" or .name == "sandbox-green")] |
+            if length == 1 then .[0].id else error("Expected exactly one sandbox droplet; resolve any deployment in progress first") end' <<< "$droplets")
           curl --fail-with-body --silent --show-error --max-time 60 \
             -X POST -H "Authorization: Bearer ${DIGITALOCEAN_TOKEN}" \
             -H 'Content-Type: application/json' \

@@ -1,23 +1,16 @@
 SHELL := /bin/bash
 
-.PHONY: help fmt lint init bootstrap-state tf-test tf-prod plan plan-test plan-prod \
-        review-pr promote-sandbox deploy-test deploy-prod \
-        cleanup-test destroy-test delete-test-workspace snapshot-test review-json-test \
-        check-nodes-test check-nodes-prod health-check-test health-check-prod \
-        dump-logs-test dump-logs-prod
+.PHONY: help fmt lint init bootstrap-state tf-prod plan plan-prod deploy-prod \
+        check-nodes-prod health-check-prod dump-logs-prod
 
-TEST_DOMAIN := test.islandora.ca
 SANDBOX_DOMAIN := sandbox.islandora.ca
 REQUIRED_NODE_IDS ?= 20 50
 
-export TEST_DOMAIN
 export SANDBOX_DOMAIN
 export PROD_DOMAIN := $(SANDBOX_DOMAIN)
 export REQUIRED_NODE_IDS
-export TF_VAR_test_domain := $(TEST_DOMAIN)
 export TF_VAR_sandbox_domain := $(SANDBOX_DOMAIN)
-export TF_VAR_droplet_size := s-4vcpu-8gb-amd
-export DIGITALOCEAN_CANDIDATE_REGIONS ?= tor1 nyc3 sfo3
+export TF_VAR_droplet_size ?= s-4vcpu-8gb-amd
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -35,6 +28,7 @@ lint: ## Check Terraform formatting and shell scripts
 	terraform -chdir=bootstrap init
 	terraform -chdir=bootstrap validate
 	find . -name '*.sh' -print0 | xargs -0 shellcheck
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s ci -p 'test_*.py'
 
 init: ## Initialize Terraform with the configured remote backend
 	terraform init -upgrade
@@ -43,63 +37,22 @@ bootstrap-state: ## Create the Terraform state Space with the no-backend bootstr
 	SPACES_ACCESS_KEY_ID="$$AWS_ACCESS_KEY_ID" SPACES_SECRET_ACCESS_KEY="$$AWS_SECRET_ACCESS_KEY" terraform -chdir=bootstrap init -upgrade
 	SPACES_ACCESS_KEY_ID="$$AWS_ACCESS_KEY_ID" SPACES_SECRET_ACCESS_KEY="$$AWS_SECRET_ACCESS_KEY" terraform -chdir=bootstrap apply -auto-approve
 
-tf-test: ## Run Terraform for test. Usage: make tf-test ACTION=plan|apply|cleanup|destroy
-	@ci/deploy-local.sh test "$${ACTION:-plan}"
-
 tf-prod: ## Run Terraform for sandbox/prod. Usage: make tf-prod ACTION=plan|apply
 	@ci/deploy-local.sh prod "$${ACTION:-plan}"
 
-plan-test: ## Plan the test workspace
-	$(MAKE) tf-test ACTION=plan
-
-plan-prod: ## Plan the sandbox/prod workspace
+plan-prod: ## Plan the sandbox workspace
 	$(MAKE) tf-prod ACTION=plan
 
-plan: plan-test plan-prod ## Plan both test and sandbox/prod workspaces
+plan: plan-prod ## Plan the sandbox workspace
 
-review-pr: ## Compatibility target: apply and validate test
-	$(MAKE) tf-test ACTION=apply
-
-promote-sandbox: ## Apply test, apply sandbox/prod, then clean up test compute
-	$(MAKE) tf-test ACTION=apply
+deploy-prod: ## Apply and validate sandbox
 	$(MAKE) tf-prod ACTION=apply
-	$(MAKE) tf-test ACTION=cleanup
-
-deploy-test: ## Apply and validate test
-	$(MAKE) tf-test ACTION=apply
-
-deploy-prod: ## Apply and validate sandbox/prod
-	$(MAKE) tf-prod ACTION=apply
-
-cleanup-test: ## Destroy only ephemeral test compute; keep test DNS and reserved IP
-	$(MAKE) tf-test ACTION=cleanup
-
-destroy-test: ## Permanently destroy the entire test workspace, including DNS and reserved IP
-	ALLOW_FULL_TEST_DESTROY=true $(MAKE) tf-test ACTION=destroy
-
-delete-test-workspace: ## Delete the test Terraform workspace
-	ci/delete-workspace.sh test
-
-snapshot-test: ## Capture a screenshot of test.islandora.ca
-	ci/screenshot.sh "https://$(TEST_DOMAIN)" artifacts/test-islandora-ca.png
-
-review-json-test: ## Fetch JSON-LD from the test review node
-	ci/fetch-json.sh "https://$(TEST_DOMAIN)/node/20?_format=jsonld" artifacts/test-node-20.json
-
-check-nodes-test: ## Validate required Drupal nodes on test
-	ci/check-nodes.sh "https://$(TEST_DOMAIN)"
 
 check-nodes-prod: ## Validate required Drupal nodes on sandbox/prod
 	ci/check-nodes.sh "https://$(SANDBOX_DOMAIN)"
 
-health-check-test: ## Wait for test to become healthy
-	ci/health-check.sh "https://$(TEST_DOMAIN)"
-
 health-check-prod: ## Wait for sandbox/prod to become healthy
 	ci/health-check.sh "https://$(SANDBOX_DOMAIN)"
-
-dump-logs-test: ## Dump logs from the test host
-	ci/dump-logs.sh "$(TEST_DOMAIN)"
 
 dump-logs-prod: ## Dump logs from the sandbox/prod host
 	ci/dump-logs.sh "$(SANDBOX_DOMAIN)"
