@@ -3,9 +3,9 @@
 set -euo pipefail
 
 # renovate: datasource=github-releases depName=docker-compose packageName=docker/compose
-DOCKER_COMPOSE_VERSION=v5.7.1
+DOCKER_COMPOSE_VERSION=v5.8.0
 # renovate: datasource=github-releases depName=docker-buildx packageName=docker/buildx
-DOCKER_BUILDX_VERSION=v0.38.2
+DOCKER_BUILDX_VERSION=v0.39.1
 
 # shellcheck disable=SC1091
 source /opt/sandbox/profile.sh
