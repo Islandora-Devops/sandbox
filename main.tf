@@ -45,7 +45,7 @@ locals {
   manage_shared_dns = local.environment != null
 
   # renovate: datasource=custom.fedora-coreos packageName=stable versioning=loose
-  coreos_version = "44.20261023.3.1"
+  coreos_version = "45.20261030.3.1"
 
   rootfs_files = {
     for f in fileset("${path.module}/rootfs", "**") : f => {
